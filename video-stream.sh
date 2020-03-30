@@ -114,7 +114,10 @@ function xrawargs {
 	echo $result
 }
 function overlay {
-	local result="timeoverlay halignment=left valignment=top ypad=75 ! textoverlay halignment=left valignment=top ypad=50 text=\"${gst[encoder]}\" ! textoverlay halignment=left valignment=top ypad=25 text=\"${gst[version]}, $1 x $2 @$3\""
+	local pad=25
+	if [ $2 -gt 480 ] ; then pad=35 ; fi
+	if [ $2 -gt 720 ] ; then pad=55 ; fi
+	local result="timeoverlay halignment=left valignment=top ypad=$(($pad * 2 + 25)) ! textoverlay halignment=left valignment=top ypad=$(($pad * 1 + 25)) text=\"${gst[encoder]}\" ! textoverlay halignment=left valignment=top ypad=25 text=\"${gst[version]}, $1 x $2 @$3\""
 	echo $result
 }
 
