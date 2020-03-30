@@ -59,7 +59,7 @@ gst[version]=$(gst-launch-1.0 --version | head -1)
 #gst[encoder]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) me-method=epzs"
 #gst[encoder_formats]='I420'
 # RPi variants
-gst[encoder]="omxh264enc bitrate=$((${config[kbps]} * 1000))"
+gst[encoder]="omxh264enc bitrate=$((${config[kbps]} * 1000)) control-rate=constant profile=main iframeinterval=$((${config[fps]} * 3))"
 gst[encoder_formats]='I420'
 # Software encoders (most every system)
 #gst[encoder]="x264enc bitrate=${config[kbps]} speed-preset=veryfast tune=zerolatency key-int-max=60"
@@ -154,7 +154,7 @@ for d in /dev/video* ; do
 		elif ${enable[xraw]} ; then
 			LOG XRAW=$d using autovideoconvert
 			dev[xraw]=$d
-			gst[encoder_conversion]="! autovideoconvert"
+			gst[encoder_conversion]="autovideoconvert !"
 			break
 		fi
 	fi
