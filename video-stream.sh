@@ -53,7 +53,7 @@ ENCODER_PRIORITY="imxipuvideotransform,omxh264enc,avenc_h264_omx,x264enc"
 encoder[imxipuvideotransform]="imxipuvideotransform ! imxvpuenc_h264 bitrate=${config[kbps]} idr-interval=$((${config[fps]} * 2))"
 encoder_formats[imxipuvideotransform]='I420|NV12|GRAY8'
 # Ubuntu, RPi
-encoder[avenc_h264_omx]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) me-method=epzs"
+encoder[avenc_h264_omx]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) pass=cbr zerocopy=true profile=main flag=low_delay threads=auto keyint-min=$((${config[fps]} * 2))"
 encoder_formats[avenc_h264_omx]='I420'
 # NVIDIA, RPi variants
 encoder[omxh264enc]="omxh264enc bitrate=$((${config[kbps]} * 1000)) control-rate=constant profile=main iframeinterval=$((${config[fps]} * 3))"
