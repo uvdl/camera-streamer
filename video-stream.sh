@@ -38,7 +38,7 @@ for k in $(IFS=',';echo $_FLG) ; do
 done
 
 # Configuration for RTMP server
-config[url]="rtmp://video.${SERVER}:${PORT}/${GROUP}/${config[sn]}?username=${USERNAME}&password=${KEY}"
+config[url]="rtmp://${SERVER}:${PORT}/${GROUP}/${config[sn]}?username=${USERNAME}&password=${KEY}"
 
 # gstreamer pipeline segments
 declare -A gst
@@ -85,7 +85,7 @@ fi
 fps=$(( ${config[fps]} ))
 if [ $fps -le 0 ] ; then qmst=1000000 ; else qmst=$(( (2000/$fps + 1) * 1000000 )) ; fi
 
-# RTMP to video.${SERVER}
+# RTMP to ${SERVER}
 if ${enable[rtmp]} ; then
 	gst[rtmpsink]="queue max-size-time=$qmst leaky=upstream ! flvmux streamable=true ! rtmpsink location=\"${config[url]}\""
 else
@@ -121,11 +121,15 @@ function overlay {
 if [ -z "${SERVER}" ] ; then
 	LOG NO Server configured, fake rtmpsink
 	gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
-elif ! ping -c 1 -W 5 ${SERVER} ; then
+else
+	for i in $(seq 1 30) ; do
+		if x=$(python /usr/local/bin/internet.py socket ${SERVER}) ; then break ; fi
+	done
 	LOG NO response from ${SERVER}, fake rtmpsink
 	gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
+fi
 # Ensure credentials were provided else, cancel the RTMP stream
-elif [ -z "${PORT}" -o -z "${GROUP}" -o -z "${config[sn]}" -o -z "${USERNAME}" -o -z "${KEY}" ] ; then
+if [ -z "${PORT}" -o -z "${GROUP}" -o -z "${config[sn]}" -o -z "${USERNAME}" -o -z "${KEY}" ] ; then
 	LOG NO credentials or stream id, fake rtmpsink
 	gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
 fi

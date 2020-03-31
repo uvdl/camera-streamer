@@ -15,7 +15,7 @@ GSTD=$(LOCAL)/bin/gstd
 GSTD_SRC=$(LOCAL)/src/gstd-1.x
 LIBSYSTEMD=/lib/systemd/system
 RIDGERUN=https://github.com/RidgeRun
-SERVER ?= mavnet.online
+SERVER ?= video.mavnet.online
 SERVER_PORT ?= 1935
 SERVER_GROUP ?= live/ORNL
 SERVICES=video-stream.service
@@ -33,6 +33,9 @@ $(GSTD): $(GSTD_SRC)
 
 $(LOCAL)/src:
 	@if [ ! -d $@ ] ; then mkdir -p $@ ; fi
+
+$(LOCAL)/bin/internet.py: internet.py
+	$(SUDO) install -Dm755 $< $@
 
 $(LOCAL)/bin/video-stream.sh: video-stream.sh
 	$(SUDO) install -Dm755 $< $@
@@ -82,7 +85,7 @@ git-cache:
 	git config --global credential.helper "cache --timeout=5400"
 
 install: git-cache
-	$(MAKE) --no-print-directory $(GSTD) $(LOCAL)/bin/video-stream.sh
+	$(MAKE) --no-print-directory $(GSTD) $(LOCAL)/bin/video-stream.sh $(LOCAL)/bin/internet.py
 	@for c in stop disable ; do $(SUDO) systemctl $${c} $(SERVICES) ; done ; true
 	@for s in $(SERVICES) ; do $(SUDO) install -Dm644 $${s%.*}.service $(LIBSYSTEMD)/$${s%.*}.service ; done
 	@if [ ! -z "$(SERVICES)" ] ; then $(SUDO) systemctl daemon-reload ; fi
