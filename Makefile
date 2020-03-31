@@ -22,6 +22,7 @@ SYSCFG=/etc/systemd/rtmp-env.conf
 .PHONY = clean dependencies disable enable git-cache install provision test uninstall
 
 $(GSTD_SRC): $(LOCAL)/src
+	$(SUDO) chmod a+w $<
 	@if [ ! -d $@ ] ; then cd $(dir $@) && git clone $(RIDGERUN)/$(notdir $@).git -b develop ; fi
 
 $(GSTD): $(GSTD_SRC)
