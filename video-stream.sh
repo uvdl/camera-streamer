@@ -31,8 +31,9 @@ config[kbps]=${4:-${config[kbps]}}      # NB: only loosely connected to what you
 config[sn]=${5:-${SN}}
 config[flags]="${6:-${config[flags]}}"
 # defaults and flags
+_FLG="debug,h264,mjpg,rtmp,udp,xraw"
 declare -A enable
-for k in $(IFS=',';echo "debug,h264,mjpg,rtmp,udp,xraw") ; do
+for k in $(IFS=',';echo $_FLG) ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
 done
 
