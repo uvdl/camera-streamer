@@ -124,6 +124,7 @@ if [ -z "${SERVER}" ] ; then
 else
 	for i in $(seq 1 30) ; do
 		if x=$(python /usr/local/bin/internet.py socket ${SERVER}) ; then break ; fi
+		sleep 1
 	done
 	LOG NO response from ${SERVER}, fake rtmpsink
 	gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
