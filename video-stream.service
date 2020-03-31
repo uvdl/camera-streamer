@@ -6,7 +6,7 @@ RequiresMountsFor=/home
 [Service]
 Type=simple
 EnvironmentFile=/etc/systemd/rtmp-env.conf
-ExecStart=/home/pi/camera-streamer/video-stream.sh
+ExecStart=/usr/local/bin/video-stream.sh
 StandardOutput=journal
 StandardError=journal
 Restart=on-failure

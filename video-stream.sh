@@ -22,29 +22,22 @@ config[width]=1280
 config[height]=720
 config[fps]=30
 config[kbps]=2000
-config[flags]="rtmp,h264,mjpg"
+config[flags]="${FLAGS}"
 # allow for command-line override
 config[width]=${1:-${config[width]}}
 config[height]=${2:-${config[height]}}
 config[fps]=${3:-${config[fps]}}/1
 config[kbps]=${4:-${config[kbps]}}      # NB: only loosely connected to what you actually get...
-config[sn]=${5:-$(python3 ${HOME}/camera-streamer/serial_number.py)}
+config[sn]=${5:-${SN}}
 config[flags]="${6:-${config[flags]}}"
 # defaults and flags
-FLAGS="debug,h264,mjpg,rtmp,xraw"
 declare -A enable
-for k in $(IFS=',';echo $FLAGS) ; do
+for k in $(IFS=',';echo "debug,h264,mjpg,rtmp,udp,xraw") ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
 done
 
 # Configuration for RTMP server
-auth="username=${USERNAME}&password=${KEY}"
-# TODO: more of this stuff can go into config[] so that it can be overriden by the provisioning/parameter system
-server="mavnet.online"
-port=1935
-grp=live/ORNL
-config[url]="rtmp://video.$server:$port/$grp/${config[sn]}?$auth"
-ttl=10
+config[url]="rtmp://video.${SERVER}:${PORT}/${GROUP}/${config[sn]}?username=${USERNAME}&password=${KEY}"
 
 # gstreamer pipeline segments
 declare -A gst
@@ -89,7 +82,7 @@ fi
 fps=$(( ${config[fps]} ))
 if [ $fps -le 0 ] ; then qmst=1000000 ; else qmst=$(( (2000/$fps + 1) * 1000000 )) ; fi
 
-# RTMP to video.$server
+# RTMP to video.${SERVER}
 if ${enable[rtmp]} ; then
 	gst[rtmpsink]="queue max-size-time=$qmst leaky=upstream ! flvmux streamable=true ! rtmpsink location=\"${config[url]}\""
 else
@@ -97,7 +90,7 @@ else
 fi
 # 2nd Sink for diagnostics/file recording
 if true ; then
-	gst[filesink]="queue max-size-time=$qmst ! fakesink"
+	gst[filesink]="queue max-size-time=$qmst ! progressreport ! fakesink"
 fi
 
 # Common parts for gst spells
@@ -122,12 +115,14 @@ function overlay {
 }
 
 # Sync with server
-if ! ping -c 1 -W 5 $server ; then
-	LOG NO $server, fake rtmpsink
+if [ -z "${SERVER}" ] ; then
+	LOG NO Server configured, fake rtmpsink
 	gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
-fi
+elif ! ping -c 1 -W 5 ${SERVER} ; then
+	LOG NO response from ${SERVER}, fake rtmpsink
+	gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
 # Ensure credentials were provided else, cancel the RTMP stream
-if [ -z "$USERNAME" -o -z "$KEY" -o -z "${config[sn]}" ] ; then
+elif [ -z "${PORT}" -o -z "${GROUP}" -o -z "${config[sn]}" -o -z "${USERNAME}" -o -z "${KEY}" ] ; then
 	LOG NO credentials or stream id, fake rtmpsink
 	gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
 fi
@@ -178,7 +173,7 @@ fi
 # Cast gstreamer spell
 # http://gstreamer-devel.966125.n4.nabble.com/Does-Gstreamer-has-a-element-that-can-split-one-stream-into-two-td966351.html
 # https://serverfault.com/a/975753
-echo "GST_DEBUG=1 G_DEBUG=fatal-criticals gst-launch-1.0 ${gst[sourcepipeline]} ! progressreport ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[rtmpsink]} t. ! ${gst[filesink]}" > $logdir/gst.cmd.$$
+echo "GST_DEBUG=1 G_DEBUG=fatal-criticals gst-launch-1.0 ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[rtmpsink]} t. ! ${gst[filesink]}" > $logdir/gst.cmd.$$
 LOG BEGIN $sourceinfo ${config[kbps]} kbps $logdir/gst.cmd.$$
 cat $logdir/gst.cmd.$$
 if ${enable[debug]} ; then exit 0 ; fi
