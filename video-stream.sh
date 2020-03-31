@@ -123,6 +123,7 @@ if [ -z "${SERVER}" ] ; then
 	gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
 else
 	response=false
+	LOG SYNC with ${SERVER}
 	for i in $(seq 1 30) ; do
 		if x=$(python /usr/local/bin/internet.py socket ${SERVER}) ; then response=true ; break ; fi
 		sleep 1
