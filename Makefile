@@ -5,6 +5,8 @@ SUDO := $(shell test $${EUID} -ne 0 && echo "sudo")
 .EXPORT_ALL_VARIABLES:
 
 PKGDEPS=automake libtool pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev libjson-glib-dev gtk-doc-tools libreadline-dev libncursesw5-dev libdaemon-dev libjansson-dev uvcdynctrl v4l-utils python3-pip
+PKGDEPS_GSTREAMER=gstreamer1.0-tools gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-alsa gstreamer1.0-opencv gstreamer1.0-rtsp gstreamer1.0-libav gstreamer1.0-gl gstreamer1.0-vaapi gstreamer1.0-doc
+PKGDEPS_RPI=gstreamer1.0-omx-rpi
 
 LOCAL=/usr/local
 LOCAL_APPS=gst-client gstd-client gst-client-1.0 gstd
@@ -60,6 +62,9 @@ clean:
 
 dependencies:
 	$(SUDO) apt-get update
+	$(SUDO) apt-get install -y $(PKGDEPS_GSTREAMER)
+	@(TYPE=$(shell python serial_number.py | cut -c1-4) && \
+		if [ "$${TYPE}" == "RPIX" ] ; then $(SUDO) apt-get install -y $(PKGDEPS_RPI) ; fi )
 	$(SUDO) apt-get install -y $(PKGDEPS)
 	$(MAKE) --no-print-directory $(GSTD)
 
