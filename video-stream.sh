@@ -122,12 +122,15 @@ if [ -z "${SERVER}" ] ; then
 	LOG NO Server configured, fake rtmpsink
 	gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
 else
+	response=false
 	for i in $(seq 1 30) ; do
-		if x=$(python /usr/local/bin/internet.py socket ${SERVER}) ; then break ; fi
+		if x=$(python /usr/local/bin/internet.py socket ${SERVER}) ; then response=true ; break ; fi
 		sleep 1
 	done
-	LOG NO response from ${SERVER}, fake rtmpsink
-	gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
+	if ! $response ; then
+		LOG NO response from ${SERVER}, fake rtmpsink
+		gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
+	fi
 fi
 # Ensure credentials were provided else, cancel the RTMP stream
 if [ -z "${PORT}" -o -z "${GROUP}" -o -z "${config[sn]}" -o -z "${USERNAME}" -o -z "${KEY}" ] ; then
