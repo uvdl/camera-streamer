@@ -42,23 +42,25 @@ config[url]="rtmp://video.${SERVER}:${PORT}/${GROUP}/${config[sn]}?username=${US
 
 # gstreamer pipeline segments
 declare -A gst
-
 gst[version]=$(gst-launch-1.0 --version | head -1)
+gst[encoder_conversion]=""
 
 # Define Encoder Pipeline
+declare -A encoder
+declare -A encoder_formats
+ENCODER_PRIORITY="imxipuvideotransform,omxh264enc,avenc_h264_omx,x264enc"
 # i.MX6
-#gst[encoder]="imxipuvideotransform ! imxvpuenc_h264 bitrate=${config[kbps]} idr-interval=60"
-#gst[encoder_formats]='I420|NV12|GRAY8'
-# Ubuntu, etc.
-#gst[encoder]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) me-method=epzs"
-#gst[encoder_formats]='I420'
-# RPi variants
-gst[encoder]="omxh264enc bitrate=$((${config[kbps]} * 1000)) control-rate=constant profile=main iframeinterval=$((${config[fps]} * 3))"
-gst[encoder_formats]='I420'
+encoder[imxipuvideotransform]="imxipuvideotransform ! imxvpuenc_h264 bitrate=${config[kbps]} idr-interval=$((${config[fps]} * 2))"
+encoder_formats[imxipuvideotransform]='I420|NV12|GRAY8'
+# Ubuntu, RPi
+encoder[avenc_h264_omx]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) me-method=epzs"
+encoder_formats[avenc_h264_omx]='I420'
+# NVIDIA, RPi variants
+encoder[omxh264enc]="omxh264enc bitrate=$((${config[kbps]} * 1000)) control-rate=constant profile=main iframeinterval=$((${config[fps]} * 3))"
+encoder_formats[omxh264enc]='I420'
 # Software encoders (most every system)
-#gst[encoder]="x264enc bitrate=${config[kbps]} speed-preset=veryfast tune=zerolatency key-int-max=60"
-#gst[encoder_formats]='I420|YV12|Y42B|Y444|NV12|YUYV'
-gst[encoder_conversion]=""
+encoder[x264enc]="x264enc bitrate=${config[kbps]} speed-preset=veryfast tune=zerolatency key-int-max=$((${config[fps]} * 2))"
+encoder_formats[x264enc]='I420|YV12|Y42B|Y444|NV12|YUYV'
 
 # logging to file and stdout (which is journaled under systemd)
 function LOG {
@@ -130,6 +132,21 @@ fi
 
 # Determine which device we will use
 LOG SCAN
+# Determine which encoder we will use
+for e in $(IFS=',';echo $ENCODER_PRIORITY) ; do
+    LOG TRY $e
+	if gst-inspect-1.0 $e >> $log ; then
+        LOG SELECT $e
+        gst[encoder]=${encoder[$e]}
+        gst[encoder_formats]=${encoder_formats[$e]}
+        break
+    fi
+done
+if [ -z "${gst[encoder]}" -o -z "${gst[encoder_formats]}" ] ; then
+    LOG NO Encoder available - pipeline will fail
+    gst[encoder]="queue"
+fi
+
 # video devices
 declare -A dev
 for d in /dev/video* ; do
