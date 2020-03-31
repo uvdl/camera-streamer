@@ -77,7 +77,7 @@ git-cache:
 
 install: git-cache
 	$(MAKE) --no-print-directory $(GSTD) $(LOCAL_BIN)/video-stream.sh
-	@-for c in stop disable ; do $(SUDO) systemctl $${c} $(SERVICES) ; done
+	@for c in stop disable ; do $(SUDO) systemctl $${c} $(SERVICES) ; done ; true
 	@for s in $(SERVICES) ; do $(SUDO) install -Dm644 $${s%.*}.service $(LIBSYSTEMD)/$${s%.*}.service ; done
 	@if [ ! -z "$(SERVICES)" ] ; then $(SUDO) systemctl daemon-reload ; fi
 	@for s in $(SERVICES) ; do $(SUDO) systemctl enable $${s%.*} ; done
