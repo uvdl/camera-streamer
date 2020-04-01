@@ -7,6 +7,7 @@
 #   KBPS: is an integer describing the desired bitrate in kilobits-per-sec
 #   SN: overrides the serial number for this stream
 #   FLAGS: overrides a list of flags to enable
+#     audio - enable audio source multiplexing
 #     debug - perform a dry-run and only report the pipeline that would be executed
 #     rtmp - enable rtmp output to the internet (video.mavnet.online)
 #     h264 - prefer H.264 source from camera
@@ -31,7 +32,7 @@ config[kbps]=${4:-${config[kbps]}}      # NB: only loosely connected to what you
 config[sn]=${5:-${SN}}
 config[flags]="${6:-${config[flags]}}"
 # defaults and flags
-_FLG="debug,h264,mjpg,rtmp,udp,xraw"
+_FLG="audio,debug,h264,mjpg,rtmp,udp,xraw"
 declare -A enable
 for k in $(IFS=',';echo $_FLG) ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
@@ -87,7 +88,7 @@ if [ $fps -le 0 ] ; then qmst=1000000 ; else qmst=$(( (2000/$fps + 1) * 1000000 
 
 # RTMP to ${SERVER}
 if ${enable[rtmp]} ; then
-	gst[rtmpsink]="queue max-size-time=$qmst leaky=upstream ! flvmux streamable=true ! rtmpsink location=\"${config[url]}\""
+	gst[rtmpsink]="queue max-size-time=$qmst leaky=upstream ! flvmux streamable=true name=mux ! rtmpsink location=\"${config[url]}\""
 else
 	gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
 fi
@@ -182,6 +183,13 @@ for d in /dev/video* ; do
 	fi
 done
 
+# audio devices
+# TBD: currently a placeholder.  This causes all kinds of problems including the dreaded
+# ERROR                   rtmp :0:: WriteN, RTMP send error 104 (25 bytes)
+if ${enable[audio]} ; then
+	gst[audiopipeline]="alsasrc device=\"hw:2\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! audioconvert ! avenc_aac threads=auto bitrate=128000 ! aacparse ! queue max-size-time=5000000000 leaky=downstream ! mux."
+fi
+
 # Determine source pipeline in priority: H264->MJPG->XRAW->TEST
 if [ ! -z "${dev[h264]}" ] ; then
 	sourceinfo="H.264 ${dev[h264]} ${config[width]} ${config[height]} ${config[fps]}"
@@ -200,7 +208,7 @@ fi
 # Cast gstreamer spell
 # http://gstreamer-devel.966125.n4.nabble.com/Does-Gstreamer-has-a-element-that-can-split-one-stream-into-two-td966351.html
 # https://serverfault.com/a/975753
-echo "GST_DEBUG=1 G_DEBUG=fatal-criticals gst-launch-1.0 ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[rtmpsink]} t. ! ${gst[filesink]}" > $logdir/gst.cmd.$$
+echo "GST_DEBUG=1 G_DEBUG=fatal-criticals gst-launch-1.0 ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[rtmpsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}" > $logdir/gst.cmd.$$
 LOG BEGIN $sourceinfo ${config[kbps]} kbps $logdir/gst.cmd.$$
 cat $logdir/gst.cmd.$$
 if ${enable[debug]} ; then exit 0 ; fi
