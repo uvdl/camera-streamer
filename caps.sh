@@ -22,6 +22,10 @@ for d in ${config[devs]} ; do
 		( gst-launch-1.0 --gst-debug=v4l2src:5 v4l2src device=$d num-buffers=0 ! fakesink 2>&1 | sed -une '/caps of src/ s/[:;] /\n/gp' ) > ${fpart}.txt
 	fi
 done
+# TODO: ALSA HW capture (for audio)
+# echo "*** ALSASRC ***"
+##for d in $(seq 0 9) ; do echo -n "*** hw:$d " ; if ( gst-launch-1.0 alsasrc device="hw:${d}" num-buffers=0 ! fakesink 2>&1 ) > /dev/null ; then echo "OK" ; for c in $(seq 0 9) ; do echo -n "    hw:$d,$c " | tee -a ${config[path]}/audio.txt ; if ( gst-launch-1.0 -v alsasrc device="hw:${d}" num-buffers=0 ! fakesink 2>&1 | sed -une '/src: caps/ s/[:;] /\n/gp' ) >> ${config[path]}/audio.txt ; then echo "OK, ${config[path]}/audio.txt" ; else echo "NO" ; fi ; done ; else echo "NO" ; fi ; done
+
 lsusb > ${config[path]}/usb.lst
 lsusb -v > ${config[path]}/usb.txt
 gst-inspect-1.0 | sort > ${config[path]}/gst.lst
