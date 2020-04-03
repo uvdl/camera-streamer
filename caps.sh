@@ -10,9 +10,10 @@
 declare -A config
 config[path]=${1:-/tmp/caps.$$} ; shift
 config[devs]=$*
-if [ -z "${config[devs]}" ] ; then config[devs]=/dev/video* ; fi
+if [ -z "${config[devs]}" ] ; then config[devs]=$(ls /dev/video* 2>/dev/null) ; fi
 
 mkdir -p ${config[path]}
+echo "*** V4L2 ***"
 for d in ${config[devs]} ; do
 	echo "*** $d ***"
 	fpart=${config[path]}/$(basename $d)
@@ -22,12 +23,20 @@ for d in ${config[devs]} ; do
 		( gst-launch-1.0 --gst-debug=v4l2src:5 v4l2src device=$d num-buffers=0 ! fakesink 2>&1 | sed -une '/caps of src/ s/[:;] /\n/gp' ) > ${fpart}.txt
 	fi
 done
-# TODO: ALSA HW capture (for audio)
-# echo "*** ALSASRC ***"
-##for d in $(seq 0 9) ; do echo -n "*** hw:$d " ; if ( gst-launch-1.0 alsasrc device="hw:${d}" num-buffers=0 ! fakesink 2>&1 ) > /dev/null ; then echo "OK" ; for c in $(seq 0 9) ; do echo -n "    hw:$d,$c " | tee -a ${config[path]}/audio.txt ; if ( gst-launch-1.0 -v alsasrc device="hw:${d}" num-buffers=0 ! fakesink 2>&1 | sed -une '/src: caps/ s/[:;] /\n/gp' ) >> ${config[path]}/audio.txt ; then echo "OK, ${config[path]}/audio.txt" ; else echo "NO" ; fi ; done ; else echo "NO" ; fi ; done
-
+echo "*** ALSASRC ***"
+# https://stackoverflow.com/a/1521470
+aplay -l > ${config[path]}/audio.txt
+echo "**** Capabilities ****" >> ${config[path]}/audio.txt
+aplay -l | grep 'card.*device' | while read p || [[ -n $p ]] ; do
+	c=$(echo $p | cut -f1 -d, | cut -f1 -d: | cut -f2 -d' ')
+	d=$(echo $p | cut -f2 -d, | cut -f1 -d: | cut -f3 -d' ')
+	echo -n "*** hw:$c,$d "
+	x=$(gst-launch-1.0 -v alsasrc device="hw:${c},${d}" num-buffers=0 ! fakesink 2>&1 | sed -une '/src: caps/ s/[:;] /\n/gp')
+	if [ -z "$x" ] ; then echo "NO" ; else echo "    hw:${c},${d} $x" >> ${config[path]}/audio.txt ; echo "OK, ${config[path]}/audio.txt" ; fi
+done
+echo "*** USB ***"
 lsusb > ${config[path]}/usb.lst
-lsusb -v > ${config[path]}/usb.txt
+lsusb -v 2>/dev/null > ${config[path]}/usb.txt
 gst-inspect-1.0 | sort > ${config[path]}/gst.lst
 
 echo "*** ${config[path]}"
