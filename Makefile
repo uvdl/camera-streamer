@@ -50,7 +50,7 @@ $(SYSCFG): serial_number.py
 		LATENCY_MS=$(shell $(SUDO) grep LATENCY_MS $(SYSCFG) | cut -f2 -d=) && \
 		read -p "Username for video server? ($${USERNAME}) " UNAME && \
 		if [ ! -z "$${UNAME}" ] ; then USERNAME=$${UNAME} ; fi ; \
-		read -s -p "Password? " KEY ; \
+		read -s -p "Password? " KEY ; echo "" ; \
 		echo "[Service]" > /tmp/$$.env && \
 		echo "FLAGS=$(FLAGS)" >> /tmp/$$.env && \
 		echo "GROUP=$(SERVER_GROUP)" >> /tmp/$$.env && \
