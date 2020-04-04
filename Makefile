@@ -66,7 +66,6 @@ $(SYSCFG): serial_number.py
 			echo "SERVER=$${SERVER}" >> /tmp/$$.env && \
 			SKEY="$${SN}" && \
 			URL="rtmp://$${SERVER}:$${SERVER_PORT}/$${SERVER_GROUP}" ; \
-		else \
 		fi ; \
 		echo "URL=\"$${URL}\"" >> /tmp/$$.env && \
 		echo "SKEY=$${SKEY}" >> /tmp/$$.env && \
