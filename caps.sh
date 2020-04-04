@@ -25,15 +25,16 @@ for d in ${config[devs]} ; do
 done
 echo "*** ALSASRC ***"
 # https://stackoverflow.com/a/1521470
-aplay -l > ${config[path]}/audio.txt
-echo "**** Capabilities ****" >> ${config[path]}/audio.txt
-aplay -l | grep 'card.*device' | while read p || [[ -n $p ]] ; do
-	c=$(echo $p | cut -f1 -d, | cut -f1 -d: | cut -f2 -d' ')
-	d=$(echo $p | cut -f2 -d, | cut -f1 -d: | cut -f3 -d' ')
-	echo -n "*** hw:$c,$d "
-	x=$(gst-launch-1.0 -v alsasrc device="hw:${c},${d}" num-buffers=0 ! fakesink 2>&1 | sed -une '/src: caps/ s/[:;] /\n/gp')
-	if [ -z "$x" ] ; then echo "NO" ; else echo "    hw:${c},${d} $x" >> ${config[path]}/audio.txt ; echo "OK, ${config[path]}/audio.txt" ; fi
-done
+if aplay -l > ${config[path]}/audio.txt ; then
+	echo "**** Capabilities ****" >> ${config[path]}/audio.txt
+	aplay -l | grep 'card.*device' | while read p || [[ -n $p ]] ; do
+		c=$(echo $p | cut -f1 -d, | cut -f1 -d: | cut -f2 -d' ')
+		d=$(echo $p | cut -f2 -d, | cut -f1 -d: | cut -f3 -d' ')
+		echo -n "*** hw:$c,$d "
+		x=$(gst-launch-1.0 -v alsasrc device="hw:${c},${d}" num-buffers=0 ! fakesink 2>&1 | sed -une '/src: caps/ s/[:;] /\n/gp')
+		if [ -z "$x" ] ; then echo "NO" ; else echo "    hw:${c},${d} $x" >> ${config[path]}/audio.txt ; echo "OK, ${config[path]}/audio.txt" ; fi
+	done
+fi
 echo "*** USB ***"
 lsusb > ${config[path]}/usb.lst
 lsusb -v 2>/dev/null > ${config[path]}/usb.txt
