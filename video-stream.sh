@@ -24,6 +24,21 @@ config[height]=720
 config[fps]=30
 config[kbps]=2000
 config[flags]="${FLAGS}"
+config[audio]="${AUDIO}"                # hw:1,0 etc. as selected from caps.sh
+config[latency]=${LATENCY_MS}           # override computed latency
+# NB: the exact ratio of the max-size-time parameter between the flvmux latency
+#     and the audio buffer is still a subject of investigation.  Empirical
+#     results show that 5:1 can work for minimum-latency applications, but 10:10
+#     is more robust for broadcast applications.
+if [ -z "${config[latency]}" ] ; then
+	# user desires minimum latency
+	config[audmux_ratio]=5
+	config[flvmux_ratio]=1
+else
+	# user desires broadcast robustness
+	config[flvmux_ratio]=10
+	config[audmux_ratio]=10
+fi
 # allow for command-line override
 config[width]=${1:-${config[width]}}
 config[height]=${2:-${config[height]}}
@@ -57,8 +72,7 @@ encoder_formats[imxipuvideotransform]='I420|NV12|GRAY8'
 encoder[avenc_h264_omx]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) pass=cbr profile=main threads=auto keyint-min=$((${config[fps]} * 2))"
 encoder_formats[avenc_h264_omx]='I420'
 # NVIDIA, RPi variants
-##encoder[omxh264enc]="omxh264enc target-bitrate=$((${config[kbps]} * 1000)) control-rate=constant periodicity-idr=$((${config[fps]} * 3))"
-encoder[omxh264enc]="omxh264enc periodicity-idr=$((${config[fps]} * 3))"
+encoder[omxh264enc]="omxh264enc target-bitrate=$((${config[kbps]} * 1000)) control-rate=variable-skip-frames periodicity-idr=$((${config[fps]} * 3))"
 encoder_formats[omxh264enc]='I420'
 # Software encoders (most every system)
 encoder[x264enc]="x264enc bitrate=${config[kbps]} speed-preset=veryfast tune=zerolatency key-int-max=$((${config[fps]} * 2))"
@@ -85,11 +99,20 @@ fi
 # "Impossible to configure latency" warnings/errors.  We calculate the amount
 # of time for two frames at the desired frame rate (in nanoseconds).  Min 1ms.
 fps=$(( ${config[fps]} ))
-if [ $fps -le 0 ] ; then qmst=1000000 ; else qmst=$(( (2000/$fps + 1) * 1000000 )) ; fi
+if [ -z "${config[latency]}" ] ; then
+	# user desires minimum latency
+	if [ $fps -le 0 ] ; then qmst=1000000 ; else qmst=$(( (2000/$fps + 1) * 1000000 )) ; fi
+else
+	# user desires broadcast robustness
+	qmst=$((${config[latency} * 1000000))
+fi
 
 # RTMP to ${SERVER}
+# NB: it seems that one of the keys to getting audio/video interleaving is to put
+#     the flvmux into its own gstreamer thread and not making it part of the video pipeline
+#     Also, latency needs to be specified
 if ${enable[rtmp]} ; then
-	gst[rtmpsink]="queue max-size-time=$qmst leaky=upstream ! flvmux streamable=true name=mux ! rtmpsink location=\"${config[url]}\""
+	gst[rtmpsink]="queue max-size-time=$qmst leaky=upstream ! mux.video flvmux streamable=true name=mux latency=$(($qmst * ${config[flvmux_ratio]})) ! rtmpsink location=\"${config[url]}\""
 else
 	gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
 fi
@@ -185,10 +208,19 @@ for d in /dev/video* ; do
 done
 
 # audio devices
-# TBD: currently a placeholder.  This causes all kinds of problems including the dreaded
+# NB: buffer management and sync can cause all kinds of problems including the dreaded
 # ERROR                   rtmp :0:: WriteN, RTMP send error 104 (25 bytes)
+# NB: in conjunction with flvmux in its own thread, it is also necessary to
+#     add extra buffering after encoding the audio to allow the flvmux to
+#     correctly match up the time.  This helps to avoid the above send errors.
 if ${enable[audio]} ; then
-	gst[audiopipeline]="alsasrc device=\"hw:2\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! audioconvert ! avenc_aac threads=auto bitrate=128000 ! aacparse ! queue max-size-time=5000000000 leaky=downstream ! mux."
+	x=$(gst-launch-1.0 -v alsasrc device=${config[audio]} num-buffers=0 ! fakesink 2>&1 | sed -une '/src: caps/ s/[:;] /\n/gp' | grep S16LE)
+	if [ -z "$x" ] ; then
+		LOG DISABLE audio ${config[audio]}
+		enable[audio]=false
+	else
+		gst[audiopipeline]="alsasrc device=\"${config[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! audioconvert ! avenc_aac threads=auto bitrate=128000 ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]})) ! mux.audio"
+	fi
 fi
 
 # Determine source pipeline in priority: H264->MJPG->XRAW->TEST
