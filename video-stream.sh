@@ -104,7 +104,7 @@ if [ -z "${config[latency]}" ] ; then
 	if [ $fps -le 0 ] ; then qmst=1000000 ; else qmst=$(( (2000/$fps + 1) * 1000000 )) ; fi
 else
 	# user desires broadcast robustness
-	qmst=$((${config[latency} * 1000000))
+	qmst=$((${config[latency]} * 1000000))
 fi
 
 # RTMP to ${SERVER}
