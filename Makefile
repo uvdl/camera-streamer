@@ -64,10 +64,12 @@ $(SYSCFG): serial_number.py
 			echo "KEY=$${KEY}" >> /tmp/$$.env && \
 			echo "USERNAME=$${USERNAME}" >> /tmp/$$.env && \
 			echo "SERVER=$${SERVER}" >> /tmp/$$.env && \
-			echo "SKEY=$${SN}" >> /tmp/$$.env && \
+			SKEY="$${SN}" && \
 			URL="rtmp://$${SERVER}:$${SERVER_PORT}/$${SERVER_GROUP}" ; \
+		else \
 		fi ; \
 		echo "URL=\"$${URL}\"" >> /tmp/$$.env && \
+		echo "SKEY=$${SKEY}" >> /tmp/$$.env && \
 		echo "FLAGS=$(FLAGS)" >> /tmp/$$.env && \
 		read -p "Audio Device? ($${AUDIO}) " ADEV && \
 		if [ ! -z "$${ADEV}" ] ; then AUDIO=$${ADEV} ; fi ; \
