@@ -43,22 +43,32 @@ $(LOCAL)/bin/video-stream.sh: video-stream.sh
 # https://stackoverflow.com/questions/3980668/how-to-get-a-password-from-a-shell-script-without-echoing
 # TODO: figure out use of an encrypted filesystem to hold the configuration file
 # https://www.linuxjournal.com/article/9400
+# FIXME: this shell code in makefile is getting out of hand...
 $(SYSCFG): serial_number.py
 	@(	SN=$(shell python serial_number.py) && \
-		USERNAME=$(shell $(SUDO) grep USERNAME $(SYSCFG) | cut -f2 -d=) && \
+		URL=$(shell $(SUDO) grep URL $(SYSCFG) | cut -f2 -d=) && \
+		SKEY=$(shell $(SUDO) grep SKEY $(SYSCFG) | cut -f2 -d=) && \
 		AUDIO=$(shell $(SUDO) grep AUDIO $(SYSCFG) | cut -f2 -d=) && \
 		LATENCY_MS=$(shell $(SUDO) grep LATENCY_MS $(SYSCFG) | cut -f2 -d=) && \
-		read -p "Username for video server? ($${USERNAME}) " UNAME && \
-		if [ ! -z "$${UNAME}" ] ; then USERNAME=$${UNAME} ; fi ; \
-		read -s -p "Password? " KEY ; echo "" ; \
-		echo "[Service]" > /tmp/$$.env && \
+		read -p "URL for video server? ($${URL}) " UR && \
+		if [ ! -z "$${UR}" ] ; then URL=$${UR} ; fi ; \
+		read -p "Stream Key? ($${SKEY}) " SK && \
+		if [ ! -z "$${SK}" ] ; then SKEY=$${SK} ; fi ; \
+		echo "[Service]" > /tmp/$$.env ; \
+		x=$$(echo $$URL | grep mavnet.online) && \
+		if [ ! -z "$$x" ] ; then \
+			USERNAME=$(shell $(SUDO) grep USERNAME $(SYSCFG) | cut -f2 -d=) && \
+			read -p "Username for video server? ($${USERNAME}) " UN && \
+			if [ ! -z "$${UN}" ] ; then USERNAME=$${UN} ; fi ; \
+			read -s -p "Password? " KEY ; echo "" ; \
+			echo "KEY=$${KEY}" >> /tmp/$$.env && \
+			echo "USERNAME=$${USERNAME}" >> /tmp/$$.env && \
+			echo "SERVER=$${SERVER}" >> /tmp/$$.env && \
+			echo "SKEY=$${SN}" >> /tmp/$$.env && \
+			URL="rtmp://$${SERVER}:$${SERVER_PORT}/$${SERVER_GROUP}" ; \
+		fi ; \
+		echo "URL=\"$${URL}\"" >> /tmp/$$.env && \
 		echo "FLAGS=$(FLAGS)" >> /tmp/$$.env && \
-		echo "GROUP=$(SERVER_GROUP)" >> /tmp/$$.env && \
-		echo "KEY=$${KEY}" >> /tmp/$$.env && \
-		echo "PORT=$(SERVER_PORT)" >> /tmp/$$.env && \
-		echo "SERVER=$(SERVER)" >> /tmp/$$.env && \
-		echo "SN=$${SN}" >> /tmp/$$.env && \
-		echo "USERNAME=$${USERNAME}" >> /tmp/$$.env && \
 		read -p "Audio Device? ($${AUDIO}) " ADEV && \
 		if [ ! -z "$${ADEV}" ] ; then AUDIO=$${ADEV} ; fi ; \
 		echo "AUDIO=$${AUDIO}" >> /tmp/$$.env && \

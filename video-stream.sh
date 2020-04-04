@@ -1,11 +1,12 @@
 #!/bin/bash
 # usage:
-#   video-stream.sh [WIDTH [HEIGHT [FPS [KBPS [SN [FLAGS]]]]]]
+#   video-stream.sh [WIDTH [HEIGHT [FPS [KBPS [URL [STREAMKEY [FLAGS]]]]]]]
 #
 # where:
 #   WIDTH, HEIGHT, FPS: are integers describing the desired output stream
 #   KBPS: is an integer describing the desired bitrate in kilobits-per-sec
-#   SN: overrides the serial number for this stream
+#   URL: overrides the stream URL in the config file
+#   STREAMKEY: overrides the stream key in the config file
 #   FLAGS: overrides a list of flags to enable
 #     audio - enable audio source multiplexing
 #     debug - perform a dry-run and only report the pipeline that would be executed
@@ -44,17 +45,15 @@ config[width]=${1:-${config[width]}}
 config[height]=${2:-${config[height]}}
 config[fps]=${3:-${config[fps]}}/1
 config[kbps]=${4:-${config[kbps]}}      # NB: only loosely connected to what you actually get...
-config[sn]=${5:-${SN}}
-config[flags]="${6:-${config[flags]}}"
+config[url]=${5:-${URL}}
+config[streamkey]=${6:-${SKEY}}
+config[flags]="${7:-${config[flags]}}"
 # defaults and flags
 _FLG="audio,debug,h264,mjpg,rtmp,udp,xraw"
 declare -A enable
 for k in $(IFS=',';echo $_FLG) ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
 done
-
-# Configuration for RTMP server
-config[url]="rtmp://${SERVER}:${PORT}/${GROUP}/${config[sn]}?username=${USERNAME}&password=${KEY}"
 
 # gstreamer pipeline segments
 declare -A gst
@@ -107,12 +106,16 @@ else
 	qmst=$((${config[latency} * 1000000))
 fi
 
-# RTMP to ${SERVER}
+# RTMP to ${URL}/${SKEY}
 # NB: it seems that one of the keys to getting audio/video interleaving is to put
 #     the flvmux into its own gstreamer thread and not making it part of the video pipeline
 #     Also, latency needs to be specified
 if ${enable[rtmp]} ; then
-	gst[rtmpsink]="queue max-size-time=$qmst leaky=upstream ! mux.video flvmux streamable=true name=mux latency=$(($qmst * ${config[flvmux_ratio]})) ! rtmpsink location=\"${config[url]}\""
+	if [ -z "${username}" -o -z "${key}" ] ; then
+		gst[rtmpsink]="queue max-size-time=$qmst leaky=upstream ! mux.video flvmux streamable=true name=mux latency=$(($qmst * ${config[flvmux_ratio]})) ! rtmpsink location=\"${config[url]}/${config[streamkey]}\""
+	else
+		gst[rtmpsink]="queue max-size-time=$qmst leaky=upstream ! mux.video flvmux streamable=true name=mux latency=$(($qmst * ${config[flvmux_ratio]})) ! rtmpsink location=\"${config[url]}/${config[streamkey]}?username=${username}\&password=${key}\""
+	fi
 else
 	gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
 fi
@@ -143,14 +146,15 @@ function overlay {
 }
 
 # Sync with server
-if [ -z "${SERVER}" ] ; then
-	LOG NO Server configured, fake rtmpsink
+if [ -z "${URL}" ] ; then
+	LOG NO URL configured, fake rtmpsink
 	gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
 else
 	response=false
+	if [ -z "${SERVER}" ] ; then _ARG="" && SERVER="internet" ; else _ARG="socket ${SERVER}" ; fi
 	LOG SYNC with ${SERVER}
 	for i in $(seq 1 30) ; do
-		if x=$(python /usr/local/bin/internet.py socket ${SERVER}) ; then response=true ; break ; fi
+		if x=$(python /usr/local/bin/internet.py ${_ARG}) ; then response=true ; break ; fi
 		sleep 1
 	done
 	if ! $response ; then
@@ -159,8 +163,8 @@ else
 	fi
 fi
 # Ensure credentials were provided else, cancel the RTMP stream
-if [ -z "${PORT}" -o -z "${GROUP}" -o -z "${config[sn]}" -o -z "${USERNAME}" -o -z "${KEY}" ] ; then
-	LOG NO credentials or stream id, fake rtmpsink
+if [ -z "${URL}" -o -z "${SKEY}" ] ; then
+	LOG NO url or stream id, fake rtmpsink
 	gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
 fi
 
