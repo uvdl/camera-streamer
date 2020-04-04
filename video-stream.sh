@@ -112,7 +112,7 @@ fi
 #     Also, latency needs to be specified
 if ${enable[rtmp]} ; then
 	if [ -z "${username}" -o -z "${key}" ] ; then
-		gst[rtmpsink]="queue max-size-time=$qmst leaky=upstream ! mux.video flvmux streamable=true name=mux latency=$(($qmst * ${config[flvmux_ratio]})) ! rtmpsink location=\"${config[url]}/${config[streamkey]}\""
+		gst[rtmpsink]="queue max-size-time=$qmst leaky=upstream ! mux.video flvmux streamable=true name=mux latency=$(($qmst * ${config[flvmux_ratio]})) ! rtmpsink location=\"${config[url]}/${config[streamkey]} live=1 flashver=FME/3.0%20(compatible;%20FMSc%201.0)\""
 	else
 		gst[rtmpsink]="queue max-size-time=$qmst leaky=upstream ! mux.video flvmux streamable=true name=mux latency=$(($qmst * ${config[flvmux_ratio]})) ! rtmpsink location=\"${config[url]}/${config[streamkey]}?username=${username}\&password=${key}\""
 	fi
