@@ -46,6 +46,8 @@ $(LOCAL)/bin/video-stream.sh: video-stream.sh
 $(SYSCFG): serial_number.py
 	@(	SN=$(shell python serial_number.py) && \
 		USERNAME=$(shell $(SUDO) grep USERNAME $(SYSCFG) | cut -f2 -d=) && \
+		AUDIO=$(shell $(SUDO) grep AUDIO $(SYSCFG) | cut -f2 -d=) && \
+		LATENCY_MS=$(shell $(SUDO) grep LATENCY_MS $(SYSCFG) | cut -f2 -d=) && \
 		read -p "Username for video server? ($${USERNAME}) " UNAME && \
 		if [ ! -z "$${UNAME}" ] ; then USERNAME=$${UNAME} ; fi ; \
 		read -s -p "Password? " KEY ; \
@@ -57,6 +59,12 @@ $(SYSCFG): serial_number.py
 		echo "SERVER=$(SERVER)" >> /tmp/$$.env && \
 		echo "SN=$${SN}" >> /tmp/$$.env && \
 		echo "USERNAME=$${USERNAME}" >> /tmp/$$.env && \
+		read -p "Audio Device? ($${AUDIO}) " ADEV && \
+		if [ ! -z "$${ADEV}" ] ; then AUDIO=$${ADEV} ; fi ; \
+		echo "AUDIO=$${AUDIO}" >> /tmp/$$.env && \
+		read -p "Override Latency (ms)? ($${LATENCY_MS}) " LMS && \
+		if [ ! -z "$${LMS}" ] ; then LATENCY_MS=$${LMS} ; fi ; \
+		echo "LATENCY_MS=$${LATENCY_MS}" >> /tmp/$$.env && \
 		$(SUDO) install -Dm600 /tmp/$$.env $@ ; \
 		rm /tmp/$$.env )
 
