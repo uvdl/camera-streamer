@@ -223,10 +223,11 @@ if ${enable[audio]} ; then
 		c=$(echo $p | cut -f1 -d, | cut -f1 -d: | cut -f2 -d' ')
 		d=$(echo $p | cut -f2 -d, | cut -f1 -d: | cut -f3 -d' ')
 		LOG TRY "hw:${c},${d}"
-		$(gst-launch-1.0 -v alsasrc device="hw:${c},${d}" num-buffers=0 ! fakesink 2>&1 | sed -une '/src: caps/ s/[:;] /\n/gp') > /tmp/audio.$$
+		gst-launch-1.0 -v alsasrc device="hw:${c},${d}" num-buffers=0 ! fakesink 2>&1 | sed -une '/src: caps/ s/[:;] /\n/gp' > /tmp/audio.$$
 		if grep S16LE /tmp/audio.$$ && ${enable[audio]} ; then
 			dev[audio]="hw:${c},${d}"
 			LOG SELECT "${dev[audio]} for ${config[audio]}"
+			break
 		fi
     done
 	if [ -z "${dev[audio]}" ] ; then
