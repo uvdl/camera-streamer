@@ -265,6 +265,7 @@ for e in $(IFS=',';echo ${config[audio_encoders]}) ; do
 		else
 			gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! ${encoder[$e]} ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]})) ! mux.audio"
 		fi
+		break
 	fi
 done
 if [ -z "${gst[audiopipeline]}" ] && ${enable[audio]} ; then
