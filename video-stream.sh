@@ -220,19 +220,25 @@ done
 # NB: devices constantly move around.  One cannot pick them, rather you have to choose from the list du-jour
 if ${enable[audio]} ; then
 	aplay -l | grep 'card.*device' | grep "${config[audio]}" | while read p || [[ -n $p ]] ; do
+		# BEWARE: this is running in a separate shell, changes to the parent environment do not persist
 		c=$(echo $p | cut -f1 -d, | cut -f1 -d: | cut -f2 -d' ')
 		d=$(echo $p | cut -f2 -d, | cut -f1 -d: | cut -f3 -d' ')
 		LOG TRY "hw:${c},${d}"
 		gst-launch-1.0 -v alsasrc device="hw:${c},${d}" num-buffers=0 ! fakesink 2>&1 | sed -une '/src: caps/ s/[:;] /\n/gp' > /tmp/audio.$$
 		if grep S16LE /tmp/audio.$$ && ${enable[audio]} ; then
-			dev[audio]="hw:${c},${d}"
-			LOG SELECT "${dev[audio]} for ${config[audio]}"
-			gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! audioconvert ! avenc_aac threads=auto bitrate=128000 ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]})) ! mux.audio"
-			break
+			echo "hw:${c},${d}" > $logdir/gst.audio.dev.$$
 		fi
 	done
-	if [ -z "${gst[audiopipeline]}" ] ; then
-		LOG NO audio ${config[audio]} because gst[audiopipeline] is empty
+	if x=$(cat $logdir/gst.audio.dev.$$) ; then
+		if [ -z "$x" ] ; then
+			LOG NO audio ${config[audio]} because /tmp/audio.$$ had no suitable capabilities
+		else
+			dev[audio]="$x"
+			LOG SELECT "${dev[audio]} for ${config[audio]}"
+			gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! audioconvert ! avenc_aac threads=auto bitrate=128000 ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]})) ! mux.audio"
+		fi
+	else
+		LOG NO audio ${config[audio]} because $logdir/gst.audio.dev.$$ was not read
 	fi
 fi
 
@@ -253,17 +259,17 @@ fi
 
 # perform a speedtest before launching the pipeline if so configured
 if ${enable[speedtest]} ; then
-    LOG DEBUG speedtest...
-    x=$(/usr/local/bin/speedtest-cli --no-download --single --json)
-    echo $x | python -c "import json,sys ; x=json.load(sys.stdin) ; print(json.dumps(x,indent=2))" >> $log
-    # analyze upload kbps
-    ul=$(echo $x | python -c "import json,sys ; x=json.load(sys.stdin) ; print(int(x['upload']))")
-    min_ul=$((${config[kbps]} * 1100))  # 10% over minimum bit rate, in bps
-    if [[ $ul -lt $min_ul ]] ; then
-        LOG WARNING "$ul bps is less then minimum ($min_ul)"
-    else
-        LOG INFO "upload speed is $(($ul / 1000)) kpbs (need $(($min_ul / 1000)) kbps)"
-    fi
+	LOG DEBUG speedtest...
+	x=$(/usr/local/bin/speedtest-cli --no-download --single --json)
+	echo $x | python -c "import json,sys ; x=json.load(sys.stdin) ; print(json.dumps(x,indent=2))" >> $log
+	# analyze upload kbps
+	ul=$(echo $x | python -c "import json,sys ; x=json.load(sys.stdin) ; print(int(x['upload']))")
+	min_ul=$((${config[kbps]} * 1100))  # 10% over minimum bit rate, in bps
+	if [[ $ul -lt $min_ul ]] ; then
+		LOG WARNING "$ul bps is less then minimum ($min_ul)"
+	else
+		LOG INFO "upload speed is $(($ul / 1000)) kpbs (need $(($min_ul / 1000)) kbps)"
+	fi
 fi
 
 # Cast gstreamer spell
