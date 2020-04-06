@@ -27,6 +27,8 @@ config[kbps]=2000
 config[flags]="${FLAGS}"
 config[audio]="${AUDIO}"                # device identifier selected from $(aplay -l | grep 'card.*device')
 config[latency]=${LATENCY_MS}           # override computed latency
+config[audio_encoders]="${AUDIO_ENCODERS}"  # list of audio encoders to use
+config[video_encoders]="${VIDEO_ENCODERS}"  # list of video encoders to use
 # NB: the exact ratio of the max-size-time parameter between the flvmux latency
 #     and the audio buffer is still a subject of investigation.  Empirical
 #     results show that 5:1 can work for minimum-latency applications, but 10:10
@@ -60,10 +62,16 @@ declare -A gst
 gst[version]=$(gst-launch-1.0 --version | head -1)
 gst[encoder_conversion]=""
 
-# Define Encoder Pipeline
+# Define Encoder Pipelines
 declare -A encoder
 declare -A encoder_formats
-ENCODER_PRIORITY="imxipuvideotransform,omxh264enc,avenc_h264_omx,x264enc"
+if [ -z "${config[video_encoders]}" ] ; then
+	config[video_encoders]="imxipuvideotransform,omxh264enc,avenc_h264_omx,x264enc"
+fi
+if [ -z "${config[audio_encoders]}" ] ; then
+	config[audio_encoders]="avenc_aac,voaacenc"
+fi
+
 # i.MX6
 encoder[imxipuvideotransform]="imxipuvideotransform ! imxvpuenc_h264 bitrate=${config[kbps]} idr-interval=$((${config[fps]} * 2))"
 encoder_formats[imxipuvideotransform]='I420|NV12|GRAY8'
@@ -76,6 +84,11 @@ encoder_formats[omxh264enc]='I420'
 # Software encoders (most every system)
 encoder[x264enc]="x264enc bitrate=${config[kbps]} speed-preset=veryfast tune=zerolatency key-int-max=$((${config[fps]} * 2))"
 encoder_formats[x264enc]='I420|YV12|Y42B|Y444|NV12'
+# Audio encoders
+encoder[avenc_aac]="avenc_aac threads=auto bitrate=128000"
+encoder_formats[avenc_aac]='F32LE'
+encoder[voaacenc]="voaacenc bitrate=128000"
+encoder_formats[voaacenc]='S16LE'
 
 # logging to file and stdout (which is journaled under systemd)
 function LOG {
@@ -170,8 +183,8 @@ fi
 
 # Determine which device we will use
 LOG SCAN
-# Determine which encoder we will use
-for e in $(IFS=',';echo $ENCODER_PRIORITY) ; do
+# Determine which video encoder we will use
+for e in $(IFS=',';echo ${config[video_encoders]}) ; do
     LOG TRY $e
 	if gst-inspect-1.0 $e >> $log ; then
         LOG SELECT $e
@@ -235,11 +248,27 @@ if ${enable[audio]} ; then
 		else
 			dev[audio]="$x"
 			LOG SELECT "${dev[audio]} for ${config[audio]}"
-			gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! audioconvert ! avenc_aac threads=auto bitrate=128000 ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]})) ! mux.audio"
 		fi
 	else
 		LOG NO audio ${config[audio]} because $logdir/gst.audio.dev.$$ was not read
 	fi
+fi
+
+# Determine which audio encoder we will use
+for e in $(IFS=',';echo ${config[audio_encoders]}) ; do
+	LOG TRY $e
+	if gst-inspect-1.0 $e >> $log ; then
+		LOG SELECT $e
+		x=$(echo S16LE | grep -E ${encoder_formats[$e]})
+		if [ -z "$x" ] ; then
+			gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! audioconvert ! ${encoder[$e]} ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]})) ! mux.audio"
+		else
+			gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! ${encoder[$e]} ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]})) ! mux.audio"
+		fi
+	fi
+done
+if [ -z "${gst[audiopipeline]}" ] && ${enable[audio]} ; then
+	LOG NO Audio encoder available
 fi
 
 # Determine source pipeline in priority: H264->MJPG->XRAW->TEST
