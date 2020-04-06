@@ -25,7 +25,7 @@ config[height]=720
 config[fps]=30
 config[kbps]=2000
 config[flags]="${FLAGS}"
-config[audio]="${AUDIO}"                # hw:1,0 etc. as selected from caps.sh
+config[audio]="${AUDIO}"                # device identifier selected from $(aplay -l | grep 'card.*device')
 config[latency]=${LATENCY_MS}           # override computed latency
 # NB: the exact ratio of the max-size-time parameter between the flvmux latency
 #     and the audio buffer is still a subject of investigation.  Empirical
@@ -217,13 +217,25 @@ done
 # NB: in conjunction with flvmux in its own thread, it is also necessary to
 #     add extra buffering after encoding the audio to allow the flvmux to
 #     correctly match up the time.  This helps to avoid the above send errors.
+# NB: devices constantly move around.  One cannot pick them, rather you have to choose from the list du-jour
 if ${enable[audio]} ; then
-	x=$(gst-launch-1.0 -v alsasrc device=${config[audio]} num-buffers=0 ! fakesink 2>&1 | sed -une '/src: caps/ s/[:;] /\n/gp' | grep S16LE)
-	if [ -z "$x" ] ; then
+	if aplay -l > /dev/null ; then
+		aplay -l | grep 'card.*device' | grep -E "${config[audio]}" | while read p || [[ -n $p ]] ; do
+			c=$(echo $p | cut -f1 -d, | cut -f1 -d: | cut -f2 -d' ')
+			d=$(echo $p | cut -f2 -d, | cut -f1 -d: | cut -f3 -d' ')
+			LOG TRY "hw:${c},${d}"
+			$(gst-launch-1.0 -v alsasrc device="hw:${c},${d}" num-buffers=0 ! fakesink 2>&1 | sed -une '/src: caps/ s/[:;] /\n/gp') > /tmp/audio.$$
+			if grep S16LE /tmp/audio.$$ && ${enable[audio]} ; then
+				dev[audio]="hw:${c},${d}"
+				LOG SELECT "${dev[audio]} for ${config[audio]}"
+			fi
+	    done
+    fi
+	if [ -z "${dev[audio]}" ] ; then
 		LOG DISABLE audio ${config[audio]}
 		enable[audio]=false
 	else
-		gst[audiopipeline]="alsasrc device=\"${config[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! audioconvert ! avenc_aac threads=auto bitrate=128000 ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]})) ! mux.audio"
+		gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! audioconvert ! avenc_aac threads=auto bitrate=128000 ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]})) ! mux.audio"
 	fi
 fi
 
