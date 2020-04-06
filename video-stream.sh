@@ -49,7 +49,7 @@ config[url]=${5:-${URL}}
 config[streamkey]=${6:-${SKEY}}
 config[flags]="${7:-${config[flags]}}"
 # defaults and flags
-_FLG="audio,debug,h264,mjpg,rtmp,udp,xraw"
+_FLG="audio,debug,h264,mjpg,rtmp,speedtest,udp,xraw"
 declare -A enable
 for k in $(IFS=',';echo $_FLG) ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
@@ -249,6 +249,21 @@ elif [ ! -z "${dev[xraw]}" ] ; then
 else
 	sourceinfo="TEST ${config[width]} ${config[height]} ${config[fps]}"
 	gst[sourcepipeline]="videotestsrc is-live=true ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]}) ! $(overlay ${config[width]} ${config[height]} ${config[fps]}) ! autovideoconvert ! ${gst[encoder]}"
+fi
+
+# perform a speedtest before launching the pipeline if so configured
+if ${enable[speedtest]} ; then
+    LOG DEBUG speedtest...
+    x=$(/usr/local/bin/speedtest-cli --no-download --single --json)
+    echo $x | python -c "import json,sys ; x=json.load(sys.stdin) ; print(json.dumps(x,indent=2))" >> $log
+    # analyze upload kbps
+    ul=$(echo $x | python -c "import json,sys ; x=json.load(sys.stdin) ; print(int(x['upload']))")
+    min_ul=$((${config[kbps]} * 1100))  # 10% over minimum bit rate, in bps
+    if [[ $ul -lt $min_ul ]] ; then
+        LOG WARNING "$ul bps is less then minimum ($min_ul)"
+    else
+        LOG INFO "upload speed is $(($ul / 1000)) kpbs (need $(($min_ul / 1000)) kbps)"
+    fi
 fi
 
 # Cast gstreamer spell
