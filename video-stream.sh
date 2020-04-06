@@ -75,7 +75,7 @@ encoder[omxh264enc]="omxh264enc target-bitrate=$((${config[kbps]} * 1000)) contr
 encoder_formats[omxh264enc]='I420'
 # Software encoders (most every system)
 encoder[x264enc]="x264enc bitrate=${config[kbps]} speed-preset=veryfast tune=zerolatency key-int-max=$((${config[fps]} * 2))"
-encoder_formats[x264enc]='I420|YV12|Y42B|Y444|NV12|YUYV'
+encoder_formats[x264enc]='I420|YV12|Y42B|Y444|NV12'
 
 # logging to file and stdout (which is journaled under systemd)
 function LOG {
@@ -126,7 +126,7 @@ fi
 
 # Common parts for gst spells
 function h264args {
-	local result="\"video/x-h264,stream-format=(string)byte-stream,width=(int)$1,height=(int)$2,framerate=(fraction)$3\" ! h264parse"
+	local result="\"video/x-h264,profile=(string)main,stream-format=(string)byte-stream,width=(int)$1,height=(int)$2,framerate=(fraction)$3\" ! h264parse"
 	echo $result
 }
 function mjpgargs {
@@ -227,14 +227,12 @@ if ${enable[audio]} ; then
 		if grep S16LE /tmp/audio.$$ && ${enable[audio]} ; then
 			dev[audio]="hw:${c},${d}"
 			LOG SELECT "${dev[audio]} for ${config[audio]}"
+			gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! audioconvert ! avenc_aac threads=auto bitrate=128000 ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]})) ! mux.audio"
 			break
 		fi
-    done
-	if [ -z "${dev[audio]}" ] ; then
-		LOG DISABLE audio ${config[audio]}
-		enable[audio]=false
-	else
-		gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! audioconvert ! avenc_aac threads=auto bitrate=128000 ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]})) ! mux.audio"
+	done
+	if [ -z "${gst[audiopipeline]}" ] ; then
+		LOG NO audio ${config[audio]} because gst[audiopipeline] is empty
 	fi
 fi
 
