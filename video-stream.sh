@@ -51,7 +51,7 @@ config[url]=${5:-${URL}}
 config[streamkey]=${6:-${SKEY}}
 config[flags]="${7:-${config[flags]}}"
 # defaults and flags
-_FLG="audio,debug,h264,mjpg,rtmp,speedtest,udp,xraw"
+_FLG="audio,debug,h264,mjpg,preview,rtmp,speedtest,udp,xraw"
 declare -A enable
 for k in $(IFS=',';echo $_FLG) ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
@@ -119,25 +119,11 @@ else
 	qmst=$((${config[latency]} * 1000000))
 fi
 
-# RTMP to ${URL}/${SKEY}
-# NB: it seems that one of the keys to getting audio/video interleaving is to put
-#     the flvmux into its own gstreamer thread and not making it part of the video pipeline
-#     Also, latency needs to be specified
-if ${enable[rtmp]} ; then
-	if [ -z "${username}" -o -z "${key}" ] ; then
-		gst[rtmpsink]="queue max-size-time=$qmst leaky=upstream ! mux.video flvmux streamable=true name=mux latency=$(($qmst * ${config[flvmux_ratio]})) ! rtmpsink location=\"${config[url]}/${config[streamkey]} live=1 flashver=FME/3.0%20(compatible;%20FMSc%201.0)\""
-	else
-		gst[rtmpsink]="queue max-size-time=$qmst leaky=upstream ! mux.video flvmux streamable=true name=mux latency=$(($qmst * ${config[flvmux_ratio]})) ! rtmpsink location=\"${config[url]}/${config[streamkey]}?username=${username}\&password=${key}\""
-	fi
-else
-	gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
-fi
-# 2nd Sink for diagnostics/file recording
-if true ; then
-	gst[filesink]="queue max-size-time=$qmst ! progressreport ! fakesink"
-fi
-
 # Common parts for gst spells
+function flvmux {
+	local result="queue max-size-time=$qmst leaky=upstream ! mux.video flvmux streamable=true name=mux latency=$(($qmst * ${config[flvmux_ratio]}))"
+	echo $result
+}
 function h264args {
 	local result="\"video/x-h264,profile=(string)main,stream-format=(string)byte-stream,width=(int)$1,height=(int)$2,framerate=(fraction)$3\" ! h264parse"
 	echo $result
@@ -154,31 +140,47 @@ function overlay {
 	local pad=25
 	if [ $2 -gt 480 ] ; then pad=35 ; fi
 	if [ $2 -gt 720 ] ; then pad=55 ; fi
-	local result="timeoverlay halignment=left valignment=top ypad=$(($pad * 2 + 25)) ! textoverlay halignment=left valignment=top ypad=$(($pad * 1 + 25)) text=\"${gst[encoder]}\" ! textoverlay halignment=left valignment=top ypad=25 text=\"${gst[version]}, $1 x $2 @$3\""
+	local result="timeoverlay halignment=left valignment=top ypad=$(($pad * 2 + 25)) ! textoverlay halignment=left valignment=top ypad=$(($pad * 1 + 25)) name=$4 text=\"$5\" ! textoverlay halignment=left valignment=top ypad=25 text=\"${gst[version]}, $1 x $2 @$3\""
 	echo $result
 }
+
+
+# RTMP to ${URL}/${SKEY}
+# NB: it seems that one of the keys to getting audio/video interleaving is to put
+#     the flvmux into its own gstreamer thread and not making it part of the video pipeline
+#     Also, latency needs to be specified
+if ${enable[rtmp]} ; then
+	if [ -z "${username}" -o -z "${key}" ] ; then
+		gst[rtmpsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]} live=1 flashver=FME/3.0%20(compatible;%20FMSc%201.0)\""
+	else
+		gst[rtmpsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]}?username=${username}\&password=${key}\""
+	fi
+else
+	# must instantiate a mux that has sink templates of .audio and .video
+	gst[rtmpsink]="$(flvmux) ! fakesink"
+fi
 
 # Sync with server
 if [ -z "${URL}" ] ; then
 	LOG NO URL configured, fake rtmpsink
-	gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
+	gst[rtmpsink]="$(flvmux) ! fakesink"
 else
 	response=false
 	if [ -z "${SERVER}" ] ; then _ARG="" && SERVER="internet" ; else _ARG="socket ${SERVER}" ; fi
 	LOG SYNC with ${SERVER}
-	for i in $(seq 1 30) ; do
+	while true ; do
 		if x=$(python /usr/local/bin/internet.py ${_ARG}) ; then response=true ; break ; fi
-		sleep 1
+		sleep 5
 	done
 	if ! $response ; then
 		LOG NO response from ${SERVER}, fake rtmpsink
-		gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
+		gst[rtmpsink]="$(flvmux) ! fakesink"
 	fi
 fi
 # Ensure credentials were provided else, cancel the RTMP stream
 if [ -z "${URL}" -o -z "${SKEY}" ] ; then
 	LOG NO url or stream id, fake rtmpsink
-	gst[rtmpsink]="queue max-size-time=$qmst ! fakesink"
+	gst[rtmpsink]="$(flvmux) ! fakesink"
 fi
 
 # Determine which device we will use
@@ -284,7 +286,7 @@ elif [ ! -z "${dev[xraw]}" ] ; then
 	gst[sourcepipeline]="v4l2src device=${dev[xraw]} io-mode=mmap ! ${gst[encoder_conversion]} $(xrawargs ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[encoder]}"
 else
 	sourceinfo="TEST ${config[width]} ${config[height]} ${config[fps]}"
-	gst[sourcepipeline]="videotestsrc is-live=true ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]}) ! $(overlay ${config[width]} ${config[height]} ${config[fps]}) ! autovideoconvert ! ${gst[encoder]}"
+	gst[sourcepipeline]="videotestsrc is-live=true ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]}) ! $(overlay ${config[width]} ${config[height]} ${config[fps]} overlay \"${gst[encoder]}\") ! autovideoconvert ! ${gst[encoder]}"
 fi
 
 # perform a speedtest before launching the pipeline if so configured
@@ -296,15 +298,26 @@ if ${enable[speedtest]} ; then
 	ul=$(echo $x | python -c "import json,sys ; x=json.load(sys.stdin) ; print(int(x['upload']))")
 	min_ul=$((${config[kbps]} * 1100))  # 10% over minimum bit rate, in bps
 	if [[ $ul -lt $min_ul ]] ; then
-		LOG WARNING "$ul bps is less then minimum ($min_ul)"
+		message="$ul bps is less then minimum ($min_ul)"
 	else
-		LOG INFO "upload speed is $(($ul / 1000)) kpbs (need $(($min_ul / 1000)) kbps)"
+		message="upload speed is $(($ul / 1000)) kpbs (need $(($min_ul / 1000)) kbps)"
 	fi
+	LOG INFO $message
+else
+	message="Upload speedtest not selected"
+fi
+
+# 2nd Sink for diagnostics/file recording
+if ${enable[preview]} ; then
+	gst[filesink]="queue max-size-time=$qmst ! $(overlay ${config[width]} ${config[height]} ${config[fps]} message \"$message\") ! progressreport ! fpsdisplaysink sync=false video-sink=autovideosink"
+else
+	gst[filesink]="queue max-size-time=$qmst ! progressreport ! fakesink"
 fi
 
 # Cast gstreamer spell
 # http://gstreamer-devel.966125.n4.nabble.com/Does-Gstreamer-has-a-element-that-can-split-one-stream-into-two-td966351.html
 # https://serverfault.com/a/975753
+# https://stackoverflow.com/questions/59085054/gstreamer-issue-with-adding-timeoverlay-on-rtmp-stream
 echo "GST_DEBUG=1 G_DEBUG=fatal-criticals gst-launch-1.0 ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[rtmpsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}" > $logdir/gst.cmd.$$
 LOG BEGIN $sourceinfo ${config[kbps]} kbps $logdir/gst.cmd.$$
 cat $logdir/gst.cmd.$$
