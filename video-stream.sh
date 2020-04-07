@@ -29,6 +29,7 @@ config[audio]="${AUDIO}"                # device identifier selected from $(apla
 config[latency]=${LATENCY_MS}           # override computed latency
 config[audio_encoders]="${AUDIO_ENCODERS}"  # list of audio encoders to use
 config[video_encoders]="${VIDEO_ENCODERS}"  # list of video encoders to use
+config[profile]=main
 # NB: the exact ratio of the max-size-time parameter between the flvmux latency
 #     and the audio buffer is still a subject of investigation.  Empirical
 #     results show that 5:1 can work for minimum-latency applications, but 10:10
@@ -76,7 +77,7 @@ fi
 encoder[imxipuvideotransform]="imxipuvideotransform ! imxvpuenc_h264 bitrate=${config[kbps]} idr-interval=$((${config[fps]} * 2))"
 encoder_formats[imxipuvideotransform]='I420|NV12|GRAY8'
 # Ubuntu, RPi
-encoder[avenc_h264_omx]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) pass=cbr profile=high threads=auto keyint-min=$((${config[fps]} * 2))"
+encoder[avenc_h264_omx]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) pass=cbr profile=${config[profile]} threads=auto keyint-min=$((${config[fps]} * 2))"
 encoder_formats[avenc_h264_omx]='I420'
 # NVIDIA, RPi variants
 encoder[omxh264enc]="omxh264enc target-bitrate=$((${config[kbps]} * 1000)) control-rate=variable-skip-frames periodicity-idr=$((${config[fps]} * 3))"
@@ -89,6 +90,9 @@ encoder[avenc_aac]="avenc_aac threads=auto bitrate=128000"
 encoder_formats[avenc_aac]='F32LE'
 encoder[voaacenc]="voaacenc bitrate=128000"
 encoder_formats[voaacenc]='S16LE'
+
+# adjustments
+if [ ${config[latency]} -le 0 ] ; then encoder[x264enc]="${encoder[x264enc]} tune=zerolatency sliced-threads=true" ; fi
 
 # logging to file and stdout (which is journaled under systemd)
 function LOG {
@@ -125,7 +129,7 @@ function flvmux {
 	echo $result
 }
 function h264args {
-	local result="\"video/x-h264,stream-format=(string)byte-stream,profile=(string)high,width=(int)$1,height=(int)$2,framerate=(fraction)$3\" ! h264parse"
+	local result="\"video/x-h264,stream-format=(string)byte-stream,profile=(string)${config[profile]},width=(int)$1,height=(int)$2,framerate=(fraction)$3\" ! h264parse"
 	echo $result
 }
 function mjpgargs {
