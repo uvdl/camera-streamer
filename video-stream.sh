@@ -23,7 +23,7 @@ declare -A config
 config[width]=1280
 config[height]=720
 config[fps]=30
-config[kbps]=2000
+config[kbps]=1800
 config[flags]="${FLAGS}"
 config[audio]="${AUDIO}"                # device identifier selected from $(aplay -l | grep 'card.*device')
 config[latency]=${LATENCY_MS}           # override computed latency
@@ -76,13 +76,13 @@ fi
 encoder[imxipuvideotransform]="imxipuvideotransform ! imxvpuenc_h264 bitrate=${config[kbps]} idr-interval=$((${config[fps]} * 2))"
 encoder_formats[imxipuvideotransform]='I420|NV12|GRAY8'
 # Ubuntu, RPi
-encoder[avenc_h264_omx]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) pass=cbr profile=main threads=auto keyint-min=$((${config[fps]} * 2))"
+encoder[avenc_h264_omx]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) pass=cbr profile=high threads=auto keyint-min=$((${config[fps]} * 2))"
 encoder_formats[avenc_h264_omx]='I420'
 # NVIDIA, RPi variants
 encoder[omxh264enc]="omxh264enc target-bitrate=$((${config[kbps]} * 1000)) control-rate=variable-skip-frames periodicity-idr=$((${config[fps]} * 3))"
 encoder_formats[omxh264enc]='I420'
 # Software encoders (most every system)
-encoder[x264enc]="x264enc bitrate=${config[kbps]} speed-preset=veryfast tune=zerolatency key-int-max=$((${config[fps]} * 2))"
+encoder[x264enc]="x264enc bitrate=${config[kbps]} speed-preset=veryfast key-int-max=$((${config[fps]} * 2))"
 encoder_formats[x264enc]='I420|YV12|Y42B|Y444|NV12'
 # Audio encoders
 encoder[avenc_aac]="avenc_aac threads=auto bitrate=128000"
@@ -125,7 +125,7 @@ function flvmux {
 	echo $result
 }
 function h264args {
-	local result="\"video/x-h264,profile=(string)main,stream-format=(string)byte-stream,width=(int)$1,height=(int)$2,framerate=(fraction)$3\" ! h264parse"
+	local result="\"video/x-h264,stream-format=(string)byte-stream,profile=(string)high,width=(int)$1,height=(int)$2,framerate=(fraction)$3\" ! h264parse"
 	echo $result
 }
 function mjpgargs {
@@ -297,10 +297,9 @@ if ${enable[speedtest]} ; then
 	# analyze upload kbps
 	ul=$(echo $x | python -c "import json,sys ; x=json.load(sys.stdin) ; print(int(x['upload']))")
 	min_ul=$((${config[kbps]} * 1100))  # 10% over minimum bit rate, in bps
+	message="measured: $(($ul / 1000)) kbps, required: $(($min_ul / 1000)) kbps"
 	if [[ $ul -lt $min_ul ]] ; then
-		message="$ul bps is less then minimum ($min_ul)"
-	else
-		message="upload speed is $(($ul / 1000)) kpbs (need $(($min_ul / 1000)) kbps)"
+		message="$message *** BELOW MIN"
 	fi
 	LOG INFO $message
 else
