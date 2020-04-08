@@ -56,18 +56,20 @@ if __name__ == "__main__":
 
     dev = sys.argv[1] if len(sys.argv)>1 else os.environ.get('MONITOR_DEV', 'wlan0')
     pin = sys.argv[2] if len(sys.argv)>2 else os.environ.get('MONITOR_PIN', '21')
-    bitrate = sys.argv[3] if len(sys.argv)>3 else os.environ.get('H264_BITRATE', '1800')
+    kbps = sys.argv[3] if len(sys.argv)>3 else os.environ.get('KBPS', '1800')
     pwm_hz = sys.argv[4] if len(sys.argv)>4 else os.environ.get('MONITOR_PWM_HZ', '100')
     update_sec = sys.argv[5] if len(sys.argv)>5 else os.environ.get('MONITOR_UPDATE_SEC', '1.0')
 
     pin = int(pin, 0)
-    bytes_per_sec = int(bitrate, 0) * 8.0
+    bytes_per_sec = int(kbps, 0) * 8.0
     pwm_hz = int(pwm_hz, 0)
     update_sec = float(update_sec)
 
+    sys.stderr.write('pin={}, bytes/sec={}, pwm={}, update={}\n'.format(pin, bytes_per_sec, pwm_hz, update_sec))
+
     GPIO.setmode(GPIO.BCM)
     GPIO.setup(pin, GPIO.OUT)
-    pwm = GPIO.PWM(pin, pwm_frequency)
+    pwm = GPIO.PWM(pin, pwm_hz)
     pwm.start(0)                # 0% duty cycle
     
     last = GetNetworkStats()    # initial statistics
@@ -79,13 +81,17 @@ if __name__ == "__main__":
             bytes_n = last[dev]['tx']['bytes']
             bytes_n_plus_1 = stats[dev]['tx']['bytes']
             delta = bytes_n_plus_1 - bytes_n
-            ratio = int( delta * factor, 0)
+            ratio = delta * factor
 
-            sys.stdout.write('{}: {}/{} bytes, ratio={}\n', dev, delta, factor / 100, ratio)
+            sys.stdout.write('{}: {}/{:.0f} bytes, ratio={:0.1f}\n'.format(dev, delta, 100.0/factor, ratio))
+            if ratio < 0: ratio = 0
+            elif ratio > 100: ratio = 100
 
             pwm.ChangeDutyCycle(ratio)
+            last = stats
+
     except KeyboardInterrupt:
         pass
-
-    pwm.stop()
-    #GPIO.cleanup()              # CHECK: this doesn't affect *other* GPIOs does it?
+    finally:
+        pwm.stop()
+        GPIO.cleanup()
