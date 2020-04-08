@@ -23,13 +23,13 @@ declare -A config
 config[width]=1280
 config[height]=720
 config[fps]=30
-config[kbps]=1000
+config[kbps]=${H264_BITRATE} ; if [ -z "${config[kbps]}" ] ; then config[kbps]=1800 ; fi
 config[flags]="${FLAGS}"
 config[audio]="${AUDIO}"                # device identifier selected from $(aplay -l | grep 'card.*device')
 config[latency]=${LATENCY_MS}           # override computed latency
 config[audio_encoders]="${AUDIO_ENCODERS}"  # list of audio encoders to use
 config[video_encoders]="${VIDEO_ENCODERS}"  # list of video encoders to use
-config[profile]=high
+config[profile]=${H264_PROFILE} ; if [ -z "${config[profile]}" ] ; then config[profile]=main ; fi
 # NB: the exact ratio of the max-size-time parameter between the flvmux latency
 #     and the audio buffer is still a subject of investigation.  Empirical
 #     results show that 5:1 can work for minimum-latency applications, but 10:10
@@ -165,17 +165,17 @@ else
 fi
 
 # Sync with server
-	response=false
-	if [ -z "${SERVER}" ] ; then _ARG="" && SERVER="internet" ; else _ARG="socket ${SERVER}" ; fi
-	LOG SYNC with ${SERVER}
-	while true ; do
-		if x=$(python /usr/local/bin/internet.py ${_ARG}) ; then response=true ; break ; fi
-		sleep 5
-	done
-	if ! $response ; then
-		LOG NO response from ${SERVER}, fake rtmpsink
-		gst[rtmpsink]="$(flvmux) ! fakesink"
-	fi
+response=false
+if [ -z "${SERVER}" ] ; then _ARG="" && SERVER="internet" ; else _ARG="socket ${SERVER}" ; fi
+LOG SYNC with ${SERVER}
+while true ; do
+	if x=$(python /usr/local/bin/internet.py ${_ARG}) ; then response=true ; break ; fi
+	sleep 5
+done
+if ! $response ; then
+	LOG NO response from ${SERVER}, fake rtmpsink
+	gst[rtmpsink]="$(flvmux) ! fakesink"
+fi
 
 # Determine which device we will use
 LOG SCAN
