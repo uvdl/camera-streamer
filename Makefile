@@ -9,7 +9,7 @@ PKGDEPS_GSTREAMER=gstreamer1.0-tools gstreamer1.0-plugins-good gstreamer1.0-plug
 PKGDEPS_RPI=gstreamer1.0-omx-rpi
 
 LOCAL=/usr/local
-LOCAL_APPS=gst-client gstd-client gst-client-1.0 gstd internet.py speedtest-cli video-stream.sh
+LOCAL_APPS=gst-client gstd-client gst-client-1.0 gstd internet.py speedtest-cli video-stream.sh stream-monitor.py
 FLAGS ?= "audio,h264,mjpg,rtmp,xraw"
 GSTD=$(LOCAL)/bin/gstd
 GSTD_SRC=$(LOCAL)/src/gstd-1.x
@@ -18,7 +18,7 @@ RIDGERUN=https://github.com/RidgeRun
 SERVER ?= video.mavnet.online
 SERVER_PORT ?= 1935
 SERVER_GROUP ?= live/ORNL
-SERVICES=video-stream.service
+SERVICES=video-stream.service stream-monitor.service
 SIVEL=https://github.com/sivel
 SPEEDTEST=$(LOCAL)/bin/speedtest-cli
 SPEEDTEST_SRC=$(LOCAL)/src/speedtest-cli
@@ -38,6 +38,9 @@ $(LOCAL)/src:
 	@if [ ! -d $@ ] ; then mkdir -p $@ ; fi
 
 $(LOCAL)/bin/internet.py: internet.py
+	$(SUDO) install -Dm755 $< $@
+
+$(LOCAL)/bin/stream-monitor.py: stream-monitor.py
 	$(SUDO) install -Dm755 $< $@
 
 $(LOCAL)/bin/video-stream.sh: video-stream.sh
@@ -115,7 +118,7 @@ git-cache:
 	git config --global credential.helper "cache --timeout=5400"
 
 install: git-cache
-	$(MAKE) --no-print-directory $(GSTD) $(LOCAL)/bin/video-stream.sh $(LOCAL)/bin/internet.py $(SPEEDTEST)
+	$(MAKE) --no-print-directory $(GSTD) $(LOCAL)/bin/video-stream.sh $(LOCAL)/bin/stream-monitor.py $(LOCAL)/bin/internet.py $(SPEEDTEST)
 	@for c in stop disable ; do $(SUDO) systemctl $${c} $(SERVICES) ; done ; true
 	@for s in $(SERVICES) ; do $(SUDO) install -Dm644 $${s%.*}.service $(LIBSYSTEMD)/$${s%.*}.service ; done
 	@if [ ! -z "$(SERVICES)" ] ; then $(SUDO) systemctl daemon-reload ; fi
