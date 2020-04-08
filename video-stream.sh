@@ -23,13 +23,13 @@ declare -A config
 config[width]=1280
 config[height]=720
 config[fps]=30
-config[kbps]=1800
+config[kbps]=1000
 config[flags]="${FLAGS}"
 config[audio]="${AUDIO}"                # device identifier selected from $(aplay -l | grep 'card.*device')
 config[latency]=${LATENCY_MS}           # override computed latency
 config[audio_encoders]="${AUDIO_ENCODERS}"  # list of audio encoders to use
 config[video_encoders]="${VIDEO_ENCODERS}"  # list of video encoders to use
-config[profile]=main
+config[profile]=high
 # NB: the exact ratio of the max-size-time parameter between the flvmux latency
 #     and the audio buffer is still a subject of investigation.  Empirical
 #     results show that 5:1 can work for minimum-latency applications, but 10:10
@@ -154,10 +154,10 @@ function overlay {
 #     the flvmux into its own gstreamer thread and not making it part of the video pipeline
 #     Also, latency needs to be specified
 if ${enable[rtmp]} ; then
-	if [ -z "${username}" -o -z "${key}" ] ; then
+	if [ -z "${USERNAME}" -o -z "${KEY}" ] ; then
 		gst[rtmpsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]} live=1 flashver=FME/3.0%20(compatible;%20FMSc%201.0)\""
 	else
-		gst[rtmpsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]}?username=${username}\&password=${key}\""
+		gst[rtmpsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]}?username=${USERNAME}\&password=${KEY}\""
 	fi
 else
 	# must instantiate a mux that has sink templates of .audio and .video
@@ -165,10 +165,6 @@ else
 fi
 
 # Sync with server
-if [ -z "${URL}" ] ; then
-	LOG NO URL configured, fake rtmpsink
-	gst[rtmpsink]="$(flvmux) ! fakesink"
-else
 	response=false
 	if [ -z "${SERVER}" ] ; then _ARG="" && SERVER="internet" ; else _ARG="socket ${SERVER}" ; fi
 	LOG SYNC with ${SERVER}
@@ -180,12 +176,6 @@ else
 		LOG NO response from ${SERVER}, fake rtmpsink
 		gst[rtmpsink]="$(flvmux) ! fakesink"
 	fi
-fi
-# Ensure credentials were provided else, cancel the RTMP stream
-if [ -z "${URL}" -o -z "${SKEY}" ] ; then
-	LOG NO url or stream id, fake rtmpsink
-	gst[rtmpsink]="$(flvmux) ! fakesink"
-fi
 
 # Determine which device we will use
 LOG SCAN
