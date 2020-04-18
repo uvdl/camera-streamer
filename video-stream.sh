@@ -1,12 +1,12 @@
 #!/bin/bash
 # usage:
-#   video-stream.sh [WIDTH [HEIGHT [FPS [KBPS [URL [STREAMKEY [FLAGS]]]]]]]
+#   video-stream.sh [WIDTH [HEIGHT [FPS [KBPS [URL [SKEY [FLAGS]]]]]]]
 #
 # where:
 #   WIDTH, HEIGHT, FPS: are integers describing the desired output stream
 #   KBPS: is an integer describing the desired bitrate in kilobits-per-sec
 #   URL: overrides the stream URL in the config file
-#   STREAMKEY: overrides the stream key in the config file
+#   SKEY: overrides the stream key in the config file
 #   FLAGS: overrides a list of flags to enable
 #     audio - enable audio source multiplexing
 #     debug - perform a dry-run and only report the pipeline that would be executed
@@ -20,21 +20,23 @@ logdir=/tmp
 if [ ! -d $logdir ] ; then logdir=/tmp ; fi ; log=$logdir/video.log
 # configuration items (defaults)
 declare -A config
-config[width]=1280
-config[height]=720
-config[fps]=30
+config[width]=${WIDTH} ; if [ -z "${config[width]}" ] ; then config[width]=1280 ; fi
+config[height]=${HEIGHT} ; if [ -z "${config[height]}" ] ; then config[height]=720 ; fi
+config[fps]=${FPS} ; if [ -z "${config[fps]}" ] ; then config[fps]=30 ; fi
 config[kbps]=${H264_BITRATE} ; if [ -z "${config[kbps]}" ] ; then config[kbps]=1800 ; fi
 config[flags]="${FLAGS}"
-config[audio]="${AUDIO}"                # device identifier selected from $(aplay -l | grep 'card.*device')
-config[latency]=${LATENCY_MS}           # override computed latency
+config[audio]="${AUDIO}"                    # device identifier selected from $(aplay -l | grep 'card.*device')
+config[audio_latency]=${AUDIO_LATENCY_MS}   # override computed latency
+config[video_latency]=${VIDEO_LATENCY_MS}   # override computed latency
 config[audio_encoders]="${AUDIO_ENCODERS}"  # list of audio encoders to use
 config[video_encoders]="${VIDEO_ENCODERS}"  # list of video encoders to use
-config[profile]=${H264_PROFILE} ; if [ -z "${config[profile]}" ] ; then config[profile]=main ; fi
+config[h264_profile]=${H264_PROFILE}        # high, main, baseline or empty
+config[h264_rate]=${H264_RATE}              # constant, variable or empty
 # NB: the exact ratio of the max-size-time parameter between the flvmux latency
 #     and the audio buffer is still a subject of investigation.  Empirical
 #     results show that 5:1 can work for minimum-latency applications, but 10:10
 #     is more robust for broadcast applications.
-if [ -z "${config[latency]}" ] ; then
+if [ -z "${config[video_latency]}" ] ; then
 	# user desires minimum latency
 	config[audmux_ratio]=5
 	config[flvmux_ratio]=1
@@ -77,10 +79,10 @@ fi
 encoder[imxipuvideotransform]="imxipuvideotransform ! imxvpuenc_h264 bitrate=${config[kbps]} idr-interval=$((${config[fps]} * 2))"
 encoder_formats[imxipuvideotransform]='I420|NV12|GRAY8'
 # Ubuntu, RPi
-encoder[avenc_h264_omx]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) pass=cbr profile=${config[profile]} threads=auto keyint-min=$((${config[fps]} * 2))"
+encoder[avenc_h264_omx]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) threads=auto keyint-min=$((${config[fps]} * 2))"
 encoder_formats[avenc_h264_omx]='I420'
 # NVIDIA, RPi variants
-encoder[omxh264enc]="omxh264enc target-bitrate=$((${config[kbps]} * 1000)) control-rate=variable-skip-frames periodicity-idr=$((${config[fps]} * 3))"
+encoder[omxh264enc]="omxh264enc target-bitrate=$((${config[kbps]} * 1000)) periodicity-idr=$((${config[fps]} * 3))"
 encoder_formats[omxh264enc]='I420'
 # Software encoders (most every system)
 encoder[x264enc]="x264enc bitrate=${config[kbps]} speed-preset=veryfast key-int-max=$((${config[fps]} * 2))"
@@ -92,7 +94,19 @@ encoder[voaacenc]="voaacenc bitrate=128000"
 encoder_formats[voaacenc]='S16LE'
 
 # adjustments
-if [ ${config[latency]} -le 0 ] ; then encoder[x264enc]="${encoder[x264enc]} tune=zerolatency sliced-threads=true" ; fi
+if [ -z "${config[video_latency]}" -o ${config[video_latency]} -lt 1 ] ; then
+	encoder[x264enc]="${encoder[x264enc]} tune=zerolatency sliced-threads=true"
+fi
+if [ ! -z "${config[h264_profile]" ] ; then
+	encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} profile=${config[h264_profile]}"
+fi
+if [ "${config[h264_rate]" == "constant" ] ; then
+	encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} pass=cbr"
+	encoder[omxh264enc]="${encoder[omxh264enc]} control-rate=constant"
+elif [ "${config[h264_rate]" == "variable" ] ; then
+	encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} pass=vbr"
+	encoder[omxh264enc]="${encoder[omxh264enc]} control-rate=variable-skip-frames"
+fi
 
 # logging to file and stdout (which is journaled under systemd)
 function LOG {
@@ -115,12 +129,18 @@ fi
 # "Impossible to configure latency" warnings/errors.  We calculate the amount
 # of time for two frames at the desired frame rate (in nanoseconds).  Min 1ms.
 fps=$(( ${config[fps]} ))
-if [ -z "${config[latency]}" ] ; then
+if [ -z "${config[video_latency]}" -o ${config[video_latency]} -lt 1 ] ; then
 	# user desires minimum latency
 	if [ $fps -le 0 ] ; then qmst=1000000 ; else qmst=$(( (2000/$fps + 1) * 1000000 )) ; fi
 else
 	# user desires broadcast robustness
-	qmst=$((${config[latency]} * 1000000))
+	qmst=$((${config[video_latency]} * 1000000))
+fi
+# when audio is enabled, there is a minimum amount of latency that has to be taken
+# into effect.  This causes the audmux and flvmux ratios to be recalculated.
+# failure to do this will result in RTMP streaming errors
+if ${enable[audio]} && ${enable[rtmp]} && [ $qmst -le 17000000000 ] ; then
+	LOG WARNING audio+video over RTMP requires 1.7 sec latency, $(($qmst / 1000000)) ms may be too little
 fi
 
 # Common parts for gst spells
@@ -129,7 +149,9 @@ function flvmux {
 	echo $result
 }
 function h264args {
-	local result="\"video/x-h264,stream-format=(string)byte-stream,profile=(string)${config[profile]},width=(int)$1,height=(int)$2,framerate=(fraction)$3\" ! h264parse"
+	local result="\"video/x-h264,stream-format=(string)byte-stream,width=(int)$1,height=(int)$2,framerate=(fraction)$3\""
+	if [ ! -z "${config[h264_profile]}" ] ; then result="$result,profile=(string)${config[h264_profile]}" ; fi
+	result="$result ! h264parse"
 	echo $result
 }
 function mjpgargs {
