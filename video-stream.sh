@@ -100,7 +100,7 @@ encoder_formats[avenc_h264_omx]='I420'
 # encoder[omxh264enc]="omxh264enc target-bitrate=$((${config[kbps]} * 1000)) periodicity-idr=$((${config[fps]} * 3))"
 # encoder_formats[omxh264enc]='I420'
 # NVidia
-encoder[omxh264enc]="omxh264enc bitrate=$((${config[kbps]} * 1000)) periodicity-idr=$((${config[fps]} * 3))"
+encoder[omxh264enc]="omxh264enc bitrate=$((${config[kbps]} * 1000)) iframeinterval=$((${config[fps]} * 3))"
 encoder_formats[omxh264enc]='I420|NV12'
 # Software encoders (most every system)
 encoder[x264enc]="x264enc bitrate=${config[kbps]} speed-preset=veryfast key-int-max=$((${config[fps]} * 2))"
