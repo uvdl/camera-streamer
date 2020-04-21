@@ -96,9 +96,12 @@ encoder_formats[imxipuvideotransform]='I420|NV12|GRAY8'
 # Ubuntu, RPi
 encoder[avenc_h264_omx]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) threads=auto keyint-min=$((${config[fps]} * 2))"
 encoder_formats[avenc_h264_omx]='I420'
-# NVIDIA, RPi variants
-encoder[omxh264enc]="omxh264enc target-bitrate=$((${config[kbps]} * 1000)) periodicity-idr=$((${config[fps]} * 3))"
-encoder_formats[omxh264enc]='I420'
+# RPi
+# encoder[omxh264enc]="omxh264enc target-bitrate=$((${config[kbps]} * 1000)) periodicity-idr=$((${config[fps]} * 3))"
+# encoder_formats[omxh264enc]='I420'
+# NVidia
+encoder[omxh264enc]="omxh264enc bitrate=$((${config[kbps]} * 1000)) periodicity-idr=$((${config[fps]} * 3))"
+encoder_formats[omxh264enc]='I420|NV12'
 # Software encoders (most every system)
 encoder[x264enc]="x264enc bitrate=${config[kbps]} speed-preset=veryfast key-int-max=$((${config[fps]} * 2))"
 encoder_formats[x264enc]='I420|YV12|Y42B|Y444|NV12'
