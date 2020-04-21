@@ -41,6 +41,7 @@ if [ -z "${config[video_latency]}" ] ; then
 	# user desires minimum latency
 	config[audmux_ratio]=5
 	config[flvmux_ratio]=1
+	config[video_latency]=0
 else
 	# user desires broadcast robustness
 	config[flvmux_ratio]=10
@@ -111,13 +112,13 @@ encoder_formats[voaacenc]='S16LE'
 if [ -z "${config[video_latency]}" -o ${config[video_latency]} -lt 1 ] ; then
 	encoder[x264enc]="${encoder[x264enc]} tune=zerolatency sliced-threads=true"
 fi
-if [ ! -z "${config[h264_profile]" ] ; then
+if [ ! -z "${config[h264_profile]}" ] ; then
 	encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} profile=${config[h264_profile]}"
 fi
-if [ "${config[h264_rate]" == "constant" ] ; then
+if [ "${config[h264_rate]}" == "constant" ] ; then
 	encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} pass=cbr"
 	encoder[omxh264enc]="${encoder[omxh264enc]} control-rate=constant"
-elif [ "${config[h264_rate]" == "variable" ] ; then
+elif [ "${config[h264_rate]}" == "variable" ] ; then
 	encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} pass=vbr"
 	encoder[omxh264enc]="${encoder[omxh264enc]} control-rate=variable-skip-frames"
 fi
@@ -135,6 +136,9 @@ if ${enable[debug]} ; then
     done
     for k in ${!enable[@]} ; do
         echo "enable[$k]=${enable[$k]}"
+    done
+    for k in ${!udp[@]} ; do
+        echo "udp[$k]=${udp[$k]}"
     done
     #exit 0
 fi
@@ -288,23 +292,24 @@ if ${enable[audio]} ; then
 	else
 		LOG NO audio ${config[audio]} because $logdir/gst.audio.dev.$$ was not read
 	fi
-fi
-
-# Determine which audio encoder we will use
-for e in $(IFS=',';echo ${config[audio_encoders]}) ; do
-	LOG TRY $e
-	if gst-inspect-1.0 $e >> $log ; then
-		LOG SELECT $e
-		x=$(echo S16LE | grep -E ${encoder_formats[$e]})
-		if [ -z "$x" ] ; then
-			gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! audioconvert ! ${encoder[$e]} ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]})) ! mux.audio"
-		else
-			gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! ${encoder[$e]} ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]})) ! mux.audio"
+	# Determine which audio encoder we will use
+	for e in $(IFS=',';echo ${config[audio_encoders]}) ; do
+		LOG TRY $e
+		if gst-inspect-1.0 $e >> $log ; then
+			LOG SELECT $e
+			x=$(echo S16LE | grep -E ${encoder_formats[$e]})
+			if [ -z "$x" ] ; then
+				gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! audioconvert ! ${encoder[$e]} ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]})) ! mux.audio"
+			else
+				gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! ${encoder[$e]} ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]})) ! mux.audio"
+			fi
+			break
 		fi
-		break
-	fi
-done
-if [ -z "${gst[audiopipeline]}" ] && ${enable[audio]} ; then
+	done
+else
+	gst[audiopipeline]=""
+fi
+if [ -z "${gst[audiopipeline]}" ] ; then
 	LOG NO Audio encoder available
 fi
 
