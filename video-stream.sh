@@ -10,9 +10,10 @@
 #   FLAGS: overrides a list of flags to enable
 #     audio - enable audio source multiplexing
 #     debug - perform a dry-run and only report the pipeline that would be executed
-#     rtmp - enable rtmp output to the internet (video.mavnet.online)
+#     rtmp - enable rtmp output to the internet
 #     h264 - prefer H.264 source from camera
 #     mjpg - fallback to Motion JPEG
+#     udp - enable UDP output to LAN
 #     xraw - fallback to RAW video (NB: may be bandwidth limited if using USB)
 #
 # TODO: https://github.com/Freescale/gstreamer-imx/issues/206
@@ -53,6 +54,19 @@ config[kbps]=${4:-${config[kbps]}}      # NB: only loosely connected to what you
 config[url]=${5:-${URL}}
 config[streamkey]=${6:-${SKEY}}
 config[flags]="${7:-${config[flags]}}"
+# udp configuration/defaults
+declare -A udp
+udp[host]=${UDP_HOST} ; if [ -z "${udp[host]}" ] ; then udp[host]=224.0.0.1 ; fi
+udp[iface]=${UDP_IFACE} ; if [ -z "${udp[iface]}" ] ; then udp[iface]=eth0 ; fi
+udp[port]=${UDP_PORT} ; if [ -z "${udp[port]}" ] ; then udp[port]=5600 ; fi
+udp[ttl]=${UDP_TTL} ; if [ -z "${udp[ttl]}" ] ; then udp[ttl]=10 ; fi
+# Need to add multicast-iface if multicasting...
+if [ ${udp[host]/.*} -ge 224 -a ${udp[host]/.*} -le 239 ] ; then
+	udp[props]="host=${udp[host]} port=${udp[port]} multicast-iface=${udp[iface]} auto-multicast=true ttl=${udp[ttl]}"
+else
+	udp[props]="host=${udp[host]} port=${udp[port]}"
+fi
+
 # defaults and flags
 _FLG="audio,debug,h264,mjpg,preview,rtmp,speedtest,udp,xraw"
 declare -A enable
@@ -177,14 +191,18 @@ function overlay {
 #     Also, latency needs to be specified
 if ${enable[rtmp]} ; then
 	if [ -z "${USERNAME}" -o -z "${KEY}" ] ; then
-		gst[rtmpsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]} live=1 flashver=FME/3.0%20(compatible;%20FMSc%201.0)\""
+		gst[avsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]} live=1 flashver=FME/3.0%20(compatible;%20FMSc%201.0)\""
 	else
-		gst[rtmpsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]}?username=${USERNAME}\&password=${KEY}\""
+		gst[avsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]}?username=${USERNAME}\&password=${KEY}\""
 	fi
+elif ${enable[udp]} ; then
+	gst[avsink]="$(flvmux) ! udpsink ${udp[props]}"
 else
 	# must instantiate a mux that has sink templates of .audio and .video
-	gst[rtmpsink]="$(flvmux) ! fakesink"
+	gst[avsink]="$(flvmux) ! fakesink"
 fi
+
+# UDP to IP:PORT (separate video and audio ports)
 
 # Sync with server
 response=false
@@ -196,7 +214,7 @@ while true ; do
 done
 if ! $response ; then
 	LOG NO response from ${SERVER}, fake rtmpsink
-	gst[rtmpsink]="$(flvmux) ! fakesink"
+	gst[avsink]="$(flvmux) ! fakesink"
 fi
 
 # Determine which device we will use
@@ -333,7 +351,7 @@ fi
 # http://gstreamer-devel.966125.n4.nabble.com/Does-Gstreamer-has-a-element-that-can-split-one-stream-into-two-td966351.html
 # https://serverfault.com/a/975753
 # https://stackoverflow.com/questions/59085054/gstreamer-issue-with-adding-timeoverlay-on-rtmp-stream
-echo "GST_DEBUG=1 G_DEBUG=fatal-criticals gst-launch-1.0 ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[rtmpsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}" > $logdir/gst.cmd.$$
+echo "GST_DEBUG=1 G_DEBUG=fatal-criticals gst-launch-1.0 ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}" > $logdir/gst.cmd.$$
 LOG BEGIN $sourceinfo ${config[kbps]} kbps $logdir/gst.cmd.$$
 cat $logdir/gst.cmd.$$
 if ${enable[debug]} ; then exit 0 ; fi
