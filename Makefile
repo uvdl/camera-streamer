@@ -4,7 +4,7 @@ SHELL := /bin/bash
 SUDO := $(shell test $${EUID} -ne 0 && echo "sudo")
 .EXPORT_ALL_VARIABLES:
 
-PKGDEPS=automake host libtool pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev libjson-glib-dev gtk-doc-tools libreadline-dev libncursesw5-dev libdaemon-dev libjansson-dev uvcdynctrl v4l-utils python3-pip
+PKGDEPS=automake host libtool pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev libjson-glib-dev gtk-doc-tools libreadline-dev libncursesw5-dev libdaemon-dev libjansson-dev sudo uvcdynctrl v4l-utils python3-pip
 
 LOCAL=/usr/local
 LOCAL_APPS=gst-client gstd-client gst-client-1.0 gstd internet.py speedtest-cli video-stream.sh
@@ -12,6 +12,7 @@ FLAGS ?= "audio,h264,mjpg,rtmp,xraw"
 GSTD=$(LOCAL)/bin/gstd
 GSTD_SRC=$(LOCAL)/src/gstd-1.x
 LIBSYSTEMD=/lib/systemd/system
+PLATFORM ?= $(shell python serial_number.py | cut -c1-4)
 RIDGERUN=https://github.com/RidgeRun
 SERVER ?= video.mavnet.online
 SERVER_PORT ?= 1935
@@ -60,6 +61,7 @@ $(SYSCFG): serial_number.py
 		LATENCY_MS=$(shell $(SUDO) grep LATENCY_MS $(SYSCFG) | cut -f2 -d=) && \
 		read -p "URL for video server? ($${URL}) " UR && \
 		if [ ! -z "$${UR}" ] ; then URL=$${UR} ; fi ; \
+		if [ -z "$${SKEY}}" ] ; then SKEY=$${SN} ; fi ; \
 		read -p "Stream Key? ($${SKEY}) " SK && \
 		if [ ! -z "$${SK}" ] ; then SKEY=$${SK} ; fi ; \
 		echo "[Service]" > /tmp/$$.env ; \
@@ -93,6 +95,7 @@ $(SYSCFG): serial_number.py
 		read -p "Override Latency (ms)? ($${LATENCY_MS}) " LMS && \
 		if [ ! -z "$${LMS}" ] ; then LATENCY_MS=$${LMS} ; fi ; \
 		echo "LATENCY_MS=$${LATENCY_MS}" >> /tmp/$$.env && \
+		echo "PLATFORM=$(PLATFORM)" >> /tmp/$$.env && \
 		$(SUDO) install -Dm600 /tmp/$$.env $@ ; \
 		rm /tmp/$$.env )
 
@@ -101,7 +104,7 @@ clean:
 
 dependencies:
 	$(SUDO) apt-get update
-	@./ensure-gst.sh
+	@PLATFORM=$(PLATFORM) ./ensure-gst.sh
 	$(SUDO) apt-get install -y $(PKGDEPS)
 	$(MAKE) --no-print-directory $(GSTD)
 	$(MAKE) --no-print-directory $(SPEEDTEST)
