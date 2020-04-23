@@ -15,7 +15,6 @@ fi
 
 echo "gstreamer version ${GST_VERSION}"
 
-PLATFORM=$(python serial_number.py | cut -c1-4)
 declare -A pkgdeps
 if [ "${PLATFORM}" == "IMX6" ] ; then
 	true

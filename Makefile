@@ -12,6 +12,7 @@ FLAGS ?= "audio,h264,mjpg,rtmp,xraw"
 GSTD=$(LOCAL)/bin/gstd
 GSTD_SRC=$(LOCAL)/src/gstd-1.x
 LIBSYSTEMD=/lib/systemd/system
+PLATFORM ?= $(shell python serial_number.py | cut -c1-4)
 RIDGERUN=https://github.com/RidgeRun
 SERVER ?= video.mavnet.online
 SERVER_PORT ?= 1935
@@ -85,6 +86,7 @@ $(SYSCFG): serial_number.py
 		read -p "Override Latency (ms)? ($${LATENCY_MS}) " LMS && \
 		if [ ! -z "$${LMS}" ] ; then LATENCY_MS=$${LMS} ; fi ; \
 		echo "LATENCY_MS=$${LATENCY_MS}" >> /tmp/$$.env && \
+		echo "PLATFORM=$(PLATFORM)" >> /tmp/$$.env && \
 		$(SUDO) install -Dm600 /tmp/$$.env $@ ; \
 		rm /tmp/$$.env )
 
@@ -93,7 +95,7 @@ clean:
 
 dependencies:
 	$(SUDO) apt-get update
-	@./ensure-gst.sh
+	@PLATFORM=$(PLATFORM) ./ensure-gst.sh
 	$(SUDO) apt-get install -y $(PKGDEPS)
 	$(MAKE) --no-print-directory $(GSTD)
 	$(MAKE) --no-print-directory $(SPEEDTEST)

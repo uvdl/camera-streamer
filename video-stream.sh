@@ -84,15 +84,16 @@ gst[encoder_conversion]=""
 declare -A encoder
 declare -A encoder_formats
 if [ -z "${config[video_encoders]}" ] ; then
-	config[video_encoders]="imxipuvideotransform,omxh264enc,avenc_h264_omx,x264enc"
+	config[video_encoders]="imxvpuenc_h264,omxh264enc,avenc_h264_omx,x264enc"
 fi
 if [ -z "${config[audio_encoders]}" ] ; then
 	config[audio_encoders]="avenc_aac,voaacenc"
 fi
 
 # i.MX6
-encoder[imxipuvideotransform]="imxipuvideotransform ! imxvpuenc_h264 bitrate=${config[kbps]} idr-interval=$((${config[fps]} * 2))"
-encoder_formats[imxipuvideotransform]='I420|NV12|GRAY8'
+# encoder[imxvpuenc_h264]="imxipuvideotransform ! imxvpuenc_h264 bitrate=${config[kbps]} idr-interval=$((${config[fps]} * 2))"
+encoder[imxvpuenc_h264]="imxvpuenc_h264 bitrate=${config[kbps]} idr-interval=$((${config[fps]} * 2))"
+encoder_formats[imxvpuenc_h264]='I420|NV12|GRAY8'
 # Ubuntu, RPi
 encoder[avenc_h264_omx]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) threads=auto keyint-min=$((${config[fps]} * 2))"
 encoder_formats[avenc_h264_omx]='I420'
@@ -166,7 +167,8 @@ fi
 
 # Common parts for gst spells
 function flvmux {
-	local result="queue max-size-time=$qmst leaky=upstream ! mux.video flvmux streamable=true name=mux latency=$(($qmst * ${config[flvmux_ratio]}))"
+	local result="queue max-size-time=$qmst leaky=upstream ! mux.video flvmux streamable=true name=mux"
+	if [ "${PLATFORM}" == "RPIX" ] ; then result="$result latency=$(($qmst * ${config[flvmux_ratio]}))" ; fi
 	echo $result
 }
 function h264args {
@@ -185,9 +187,14 @@ function xrawargs {
 }
 function overlay {
 	local pad=25
-	if [ $2 -gt 480 ] ; then pad=35 ; fi
-	if [ $2 -gt 720 ] ; then pad=55 ; fi
-	local result="timeoverlay halignment=left valignment=top ypad=$(($pad * 2 + 25)) ! textoverlay halignment=left valignment=top ypad=$(($pad * 1 + 25)) name=$4 text=\"$5\" ! textoverlay halignment=left valignment=top ypad=25 text=\"${gst[version]}, $1 x $2 @$3\""
+	local width=$1
+	local height=$2
+	local fps=$3
+	local name=$4
+	shift 4
+	if [ $height -gt 480 ] ; then pad=35 ; fi
+	if [ $height -gt 720 ] ; then pad=55 ; fi
+	local result="timeoverlay halignment=left valignment=top ypad=$(($pad * 2 + 25)) ! textoverlay halignment=left valignment=top ypad=$(($pad * 1 + 25)) name=$name text=\""$@"\" ! textoverlay halignment=left valignment=top ypad=25 text=\"${gst[version]}, $width x $height @$fps\""
 	echo $result
 }
 
@@ -328,7 +335,7 @@ elif [ ! -z "${dev[xraw]}" ] ; then
 	gst[sourcepipeline]="v4l2src device=${dev[xraw]} io-mode=mmap ! ${gst[encoder_conversion]} $(xrawargs ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[encoder]}"
 else
 	sourceinfo="TEST ${config[width]} ${config[height]} ${config[fps]}"
-	gst[sourcepipeline]="videotestsrc is-live=true ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]}) ! $(overlay ${config[width]} ${config[height]} ${config[fps]} overlay \"${gst[encoder]}\") ! autovideoconvert ! ${gst[encoder]}"
+	gst[sourcepipeline]="videotestsrc is-live=true ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]}) ! $(overlay ${config[width]} ${config[height]} ${config[fps]} overlay ${gst[encoder]}) ! ${gst[encoder]}"
 fi
 
 # perform a speedtest before launching the pipeline if so configured
@@ -350,7 +357,7 @@ fi
 
 # 2nd Sink for diagnostics/file recording
 if ${enable[preview]} ; then
-	gst[filesink]="queue max-size-time=$qmst ! $(overlay ${config[width]} ${config[height]} ${config[fps]} message \"$message\") ! progressreport ! fpsdisplaysink sync=false video-sink=autovideosink"
+	gst[filesink]="queue max-size-time=$qmst ! $(overlay ${config[width]} ${config[height]} ${config[fps]} message $message) ! progressreport ! fpsdisplaysink sync=false video-sink=autovideosink"
 else
 	gst[filesink]="queue max-size-time=$qmst ! progressreport ! fakesink"
 fi
