@@ -2,7 +2,7 @@ import os, sys
 
 def hosts(server, output, flags):
     """Ensure that (video.)server is listed in the hosts file."""
-    video = server if server.startswith('video.') else video = 'video.'+server
+    video = server if server.startswith('video.') else 'video.'+server
     # handle special case of 'dev.mavnet.online' which still uses video.mavnet.online
     if server.startswith('dev.'):
         video = 'video.'+'.'.join(server.split('.')[1:])
