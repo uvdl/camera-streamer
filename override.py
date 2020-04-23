@@ -29,11 +29,11 @@ auto lo
 iface lo inet loopback
 
 """
-	txt = txt + 'iface eth0 inet static\n'
-	lan = ipv4
-	txt = txt + '    address {}\n'.format(lan)
-	txt = txt + '    netmask {}\n'.format('255.255.0.0')
-	txt = txt + '    network {}.0.0\n'.format('.'.join([x for x in lan.split('.')[0:2]]))
+    txt = txt + 'iface eth0 inet static\n'
+    lan = ipv4
+    txt = txt + '    address {}\n'.format(lan)
+    txt = txt + '    netmask {}\n'.format('255.255.0.0')
+    txt = txt + '    network {}.0.0\n'.format('.'.join([x for x in lan.split('.')[0:2]]))
 
     if 'dry-run' in flags:
         sys.stdout.write(txt)
