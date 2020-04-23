@@ -77,14 +77,15 @@ $(SYSCFG): serial_number.py
 			SKEY="$${SN}" && \
 			URL="rtmp://$${SERVER}:$${SERVER_PORT}/$${SERVER_GROUP}" ; \
 		fi ; \
-		x=$$(echo $$URL | grep udp) && \
-		if [ ! -z "$$x" ] ; then \
+		if [ "$$URL" == "udp" ] ; then \
 			UDP_IFACE=$(shell $(SUDO) grep UDP_IFACE $(SYSCFG) | cut -f2 -d=) && \
 			read -p "Multicast Interface? ($${UDP_IFACE}) " UIF && \
 			if [ ! -z "$${UIF}" ] ; then UDP_IFACE=$${UIF} ; fi ; \
 			UDP_PORT=$(shell $(SUDO) grep UDP_PORT $(SYSCFG) | cut -f2 -d=) && \
 			read -p "Multicast Port? ($${UDP_PORT}) " UP && \
 			if [ ! -z "$${UP}" ] ; then UDP_PORT=$${UP} ; fi ; \
+			echo "UDP_IFACE=$${UDP_IFACE}" >> /tmp/$$.env && \
+			echo "UDP_PORT=$${UDP_PORT}" >> /tmp/$$.env ; \
 		fi ; \
 		echo "URL=\"$${URL}\"" >> /tmp/$$.env && \
 		echo "SKEY=$${SKEY}" >> /tmp/$$.env && \
@@ -131,16 +132,22 @@ install: git-cache
 
 provision:
 	$(MAKE) --no-print-directory FLAGS=$(FLAGS) -B $(SYSCFG)
-	@(	UDP_IFACE=$(shell $(SUDO) grep UDP_IFACE $(SYSCFG) | cut -f2 -d=) && \
-		URL=$(shell $(SUDO) grep URL $(SYSCFG) | cut -f2 -d=) && \
-		if [ ! -z "$${URL}" ] ; then \
+	$(MAKE) --no-print-directory -B /etc/hosts
+	$(MAKE) --no-print-directory -B /etc/network/interfaces
+
+/etc/hosts: Makefile
+	@(	URL=$(shell $(SUDO) grep URL $(SYSCFG) | cut -f2 -d=) && \
+		if [ ! -z "$${URL}" -a "$${URL}" != "udp" ] ; then \
 			SVR=$$(echo $$URL | cut -f2 -d: | sed -e 's/\/*//') && \
 			read -p "Server for RTMP stream? ($${SVR}) " VS && \
 			if [ ! -z "$${VS}" ] ; then SVR=$${VS} ; fi ; \
 			if [ ! -z "$$SVR" ] ; then \
 				python3 override.py $$SVR /etc/hosts ; \
 			fi ; \
-		fi ; \
+		fi )
+
+/etc/network/interfaces: Makefile
+	@(	UDP_IFACE=$(shell $(SUDO) grep UDP_IFACE $(SYSCFG) | cut -f2 -d=) && \
 		if [ ! -z "$${UDP_IFACE}" ] ; then \
 			UDP_ADDR=$(shell ip addr show $${UDP_IFACE} | grep inet | grep -v inet6 | head -1 | sed -e 's/^[[:space:]]*//' | cut -f2 -d' ' | cut -f1 -d/) && \
 			read -p "IPv4 Address for $${UDP_IFACE}? ($${UDP_ADDR}) " UA && \
