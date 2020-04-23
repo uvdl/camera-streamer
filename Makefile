@@ -60,6 +60,7 @@ $(SYSCFG): serial_number.py
 		LATENCY_MS=$(shell $(SUDO) grep LATENCY_MS $(SYSCFG) | cut -f2 -d=) && \
 		read -p "URL for video server? ($${URL}) " UR && \
 		if [ ! -z "$${UR}" ] ; then URL=$${UR} ; fi ; \
+		if [ -z "$${SKEY}}" ] ; then SKEY=$${SN} ; fi ; \
 		read -p "Stream Key? ($${SKEY}) " SK && \
 		if [ ! -z "$${SK}" ] ; then SKEY=$${SK} ; fi ; \
 		echo "[Service]" > /tmp/$$.env ; \
