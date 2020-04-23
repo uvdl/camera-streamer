@@ -4,7 +4,7 @@ SHELL := /bin/bash
 SUDO := $(shell test $${EUID} -ne 0 && echo "sudo")
 .EXPORT_ALL_VARIABLES:
 
-PKGDEPS=automake libtool pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev libjson-glib-dev gtk-doc-tools libreadline-dev libncursesw5-dev libdaemon-dev libjansson-dev uvcdynctrl v4l-utils python3-pip
+PKGDEPS=automake host libtool pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev libjson-glib-dev gtk-doc-tools libreadline-dev libncursesw5-dev libdaemon-dev libjansson-dev uvcdynctrl v4l-utils python3-pip
 
 LOCAL=/usr/local
 LOCAL_APPS=gst-client gstd-client gst-client-1.0 gstd internet.py speedtest-cli video-stream.sh
@@ -51,7 +51,7 @@ $(SPEEDTEST): $(SPEEDTEST_SRC)
 # https://stackoverflow.com/questions/3980668/how-to-get-a-password-from-a-shell-script-without-echoing
 # TODO: figure out use of an encrypted filesystem to hold the configuration file
 # https://www.linuxjournal.com/article/9400
-# FIXME: this shell code in makefile is getting out of hand...
+# FIXME: this shell code in makefile is getting way out of hand...
 $(SYSCFG): serial_number.py
 	@(	SN=$(shell python serial_number.py) && \
 		URL=$(shell $(SUDO) grep URL $(SYSCFG) | cut -f2 -d=) && \
@@ -74,6 +74,15 @@ $(SYSCFG): serial_number.py
 			echo "SERVER=$${SERVER}" >> /tmp/$$.env && \
 			SKEY="$${SN}" && \
 			URL="rtmp://$${SERVER}:$${SERVER_PORT}/$${SERVER_GROUP}" ; \
+		fi ; \
+		x=$$(echo $$URL | grep udp) && \
+		if [ ! -z "$$x" ] ; then \
+			UDP_IFACE=$(shell $(SUDO) grep UDP_IFACE $(SYSCFG) | cut -f2 -d=) && \
+			read -p "Multicast Interface? ($${UDP_IFACE}) " UIF && \
+			if [ ! -z "$${UIF}" ] ; then UDP_IFACE=$${UIF} ; fi ; \
+			UDP_PORT=$(shell $(SUDO) grep UDP_PORT $(SYSCFG) | cut -f2 -d=) && \
+			read -p "Multicast Port? ($${UDP_PORT}) " UP && \
+			if [ ! -z "$${UP}" ] ; then UDP_PORT=$${UP} ; fi ; \
 		fi ; \
 		echo "URL=\"$${URL}\"" >> /tmp/$$.env && \
 		echo "SKEY=$${SKEY}" >> /tmp/$$.env && \
@@ -119,6 +128,24 @@ install: git-cache
 
 provision:
 	$(MAKE) --no-print-directory FLAGS=$(FLAGS) -B $(SYSCFG)
+	@(	UDP_IFACE=$(shell $(SUDO) grep UDP_IFACE $(SYSCFG) | cut -f2 -d=) && \
+		URL=$(shell $(SUDO) grep URL $(SYSCFG) | cut -f2 -d=) && \
+		if [ ! -z "$${URL}" ] ; then \
+			SVR=$$(echo $$URL | cut -f2 -d: | sed -e 's/\/*//') && \
+			read -p "Server for RTMP stream? ($${SVR}) " VS && \
+			if [ ! -z "$${VS}" ] ; then SVR=$${VS} ; fi ; \
+			if [ ! -z "$$SVR" ] ; then \
+				python3 override.py $$SVR /etc/hosts ; \
+			fi ; \
+		fi ; \
+		if [ ! -z "$${UDP_IFACE}" ] ; then \
+			UDP_ADDR=$(shell ip addr show $${UDP_IFACE} | grep inet | grep -v inet6 | head -1 | sed -e 's/^[[:space:]]*//' | cut -f2 -d' ' | cut -f1 -d/) && \
+			read -p "IPv4 Address for $${UDP_IFACE}? ($${UDP_ADDR}) " UA && \
+			if [ ! -z "$${UA}" ] ; then UDP_ADDR=$${UA} ; fi ; \
+			if [ ! -z "$$UDP_ADDR" ] ; then \
+				python3 override.py $$UDP_ADDR /etc/network/interfaces ; \
+			fi ; \
+		fi )
 
 test:
 	-@( gstd -k && gstd )
