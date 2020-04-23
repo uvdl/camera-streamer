@@ -1,11 +1,11 @@
 [Unit]
 Description=RTMP Video Stream
 After=systemd-remount-fs.service network.target nss-lookup.target
-RequiresMountsFor=/home
+RequiresMountsFor=/usr
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/systemd/rtmp-env.conf
+EnvironmentFile=/etc/systemd/video-stream-env.conf
 ExecStart=/usr/local/bin/video-stream.sh
 StandardOutput=journal
 StandardError=journal
