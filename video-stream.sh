@@ -171,6 +171,10 @@ function flvmux {
 	if [ "${PLATFORM}" == "RPIX" ] ; then result="$result latency=$(($qmst * ${config[flvmux_ratio]}))" ; fi
 	echo $result
 }
+function rtpmux {
+	local result="queue max-size-time=$qmst leaky=upstream ! rtph264pay config-interval=10 pt=96 ! mux.sink_0 rtpmux name=mux"
+	echo $result
+}
 function h264args {
 	local result="\"video/x-h264,stream-format=(string)byte-stream,width=(int)$1,height=(int)$2,framerate=(fraction)$3\""
 	if [ ! -z "${config[h264_profile]}" ] ; then result="$result,profile=(string)${config[h264_profile]}" ; fi
@@ -210,10 +214,10 @@ if ${enable[rtmp]} ; then
 		gst[avsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]}?username=${USERNAME}\&password=${KEY}\""
 	fi
 elif ${enable[udp]} ; then
-	gst[avsink]="$(flvmux) ! udpsink ${udp[props]}"
+	gst[avsink]="$(rtpmux) ! udpsink ${udp[props]}"
 else
-	# must instantiate a mux that has sink templates of .audio and .video
-	gst[avsink]="$(flvmux) ! fakesink"
+	# must instantiate a mux that has sink templates of .sink_0 and .sink_1 (like for UDP)
+	gst[avsink]="$(rtpmux) ! fakesink"
 fi
 
 # UDP to IP:PORT (separate video and audio ports)
@@ -227,8 +231,9 @@ while true ; do
 	sleep 5
 done
 if ! $response ; then
-	LOG NO response from ${SERVER}, fake rtmpsink
-	gst[avsink]="$(flvmux) ! fakesink"
+	LOG NO response from ${SERVER}, pipeline may fail
+	#gst[avsink]="$(flvmux) ! fakesink"
+	#gst[avsink]="$(rtpmux) ! fakesink"
 fi
 
 # Determine which device we will use
@@ -309,9 +314,14 @@ if ${enable[audio]} ; then
 			LOG SELECT $e
 			x=$(echo S16LE | grep -E ${encoder_formats[$e]})
 			if [ -z "$x" ] ; then
-				gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! audioconvert ! ${encoder[$e]} ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]})) ! mux.audio"
+				gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! audioconvert ! ${encoder[$e]} ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]}))"
 			else
-				gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! ${encoder[$e]} ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]})) ! mux.audio"
+				gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! ${encoder[$e]} ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]}))"
+			fi
+			if ${enable[rtmp]} ; then
+				gst[audiopipeline]="${gst[audiopipeline]} ! mux.audio"
+			else
+				gst[audiopipeline]="${gst[audiopipeline]} ! rtpmp4apay pt=96 ! mux.sink_1"
 			fi
 			break
 		fi
