@@ -137,7 +137,8 @@ install: git-cache
 provision:
 	$(MAKE) --no-print-directory FLAGS=$(FLAGS) -B $(SYSCFG)
 	$(MAKE) --no-print-directory -B /etc/hosts
-	$(MAKE) --no-print-directory -B /etc/network/interfaces
+	@(	UDP_IFACE=$(shell $(SUDO) grep UDP_IFACE $(SYSCFG) | cut -f2 -d=) && \
+		UDP_IFACE=$$UDP_IFACE $(MAKE) --no-print-directory -B /etc/network/interfaces )
 
 /etc/hosts: Makefile
 	@(	URL=$(shell $(SUDO) grep URL $(SYSCFG) | cut -f2 -d=) && \
@@ -151,15 +152,10 @@ provision:
 		fi )
 
 /etc/network/interfaces: Makefile
-	@(	UDP_IFACE=$(shell $(SUDO) grep UDP_IFACE $(SYSCFG) | cut -f2 -d=) && \
-		if [ ! -z "$${UDP_IFACE}" ] ; then \
-			UDP_ADDR=$(shell ip addr show $${UDP_IFACE} | grep inet | grep -v inet6 | head -1 | sed -e 's/^[[:space:]]*//' | cut -f2 -d' ' | cut -f1 -d/) && \
-			read -p "IPv4 Address for $${UDP_IFACE}? ($${UDP_ADDR}) " UA && \
-			if [ ! -z "$${UA}" ] ; then UDP_ADDR=$${UA} ; fi ; \
-			if [ ! -z "$$UDP_ADDR" ] ; then \
-				python3 override.py $$UDP_ADDR /etc/network/interfaces ; \
-			fi ; \
-		fi )
+	@(	UDP_ADDR=$(shell ip addr show $${UDP_IFACE} | grep inet | grep -v inet6 | head -1 | sed -e 's/^[[:space:]]*//' | cut -f2 -d' ' | cut -f1 -d/) && \
+		read -p "IPv4 Address for $${UDP_IFACE}? ($${UDP_ADDR}) " UA && \
+		if [ ! -z "$${UA}" ] ; then UDP_ADDR=$${UA} ; fi ; \
+		python3 override.py "$${UDP_ADDR}" $@ )
 
 test:
 	-@( gstd -k && gstd )
