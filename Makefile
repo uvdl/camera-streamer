@@ -52,7 +52,7 @@ $(SPEEDTEST): $(SPEEDTEST_SRC)
 # https://stackoverflow.com/questions/3980668/how-to-get-a-password-from-a-shell-script-without-echoing
 # TODO: figure out use of an encrypted filesystem to hold the configuration file
 # https://www.linuxjournal.com/article/9400
-# FIXME: this shell code in makefile is getting way out of hand...
+# FIXME: this shell code in makefile is really, really dumb...
 $(SYSCFG): serial_number.py
 	@(	SN=$(shell python serial_number.py) && \
 		URL=$(shell $(SUDO) grep URL $(SYSCFG) | cut -f2 -d=) && \
@@ -79,12 +79,16 @@ $(SYSCFG): serial_number.py
 		fi ; \
 		if [ "$$URL" == "udp" ] ; then \
 			UDP_IFACE=$(shell $(SUDO) grep UDP_IFACE $(SYSCFG) | cut -f2 -d=) && \
-			read -p "Multicast Interface? ($${UDP_IFACE}) " UIF && \
-			if [ ! -z "$${UIF}" ] ; then UDP_IFACE=$${UIF} ; fi ; \
+			UDP_IP=$(shell $(SUDO) grep UDP_IP $(SYSCFG) | cut -f2 -d=) && \
 			UDP_PORT=$(shell $(SUDO) grep UDP_PORT $(SYSCFG) | cut -f2 -d=) && \
-			read -p "Multicast Port? ($${UDP_PORT}) " UP && \
+			read -p "Interface for video stream? ($${UDP_IFACE}) " UIF && \
+			if [ ! -z "$${UIF}" ] ; then UDP_IFACE=$${UIF} ; fi ; \
+			read -p "UDP port for video stream? ($${UDP_PORT}) " UP && \
 			if [ ! -z "$${UP}" ] ; then UDP_PORT=$${UP} ; fi ; \
+			read -p "UDP address for video stream? ($${UDP_IP}) " UIP && \
+			if [ ! -z "$${UIP}" ] ; then UDP_IP=$${UIP} ; fi ; \
 			echo "UDP_IFACE=$${UDP_IFACE}" >> /tmp/$$.env && \
+			echo "UDP_IP=$${UDP_IP}" >> /tmp/$$.env && \
 			echo "UDP_PORT=$${UDP_PORT}" >> /tmp/$$.env ; \
 		fi ; \
 		echo "URL=\"$${URL}\"" >> /tmp/$$.env && \
