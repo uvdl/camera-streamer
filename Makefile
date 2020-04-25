@@ -21,7 +21,7 @@ SERVICES=video-stream.service
 SIVEL=https://github.com/sivel
 SPEEDTEST=$(LOCAL)/bin/speedtest-cli
 SPEEDTEST_SRC=$(LOCAL)/src/speedtest-cli
-SYSCFG=/etc/systemd/video-stream-env.conf
+SYSCFG=/etc/systemd/video-stream.conf
 
 .PHONY = clean dependencies disable enable git-cache install provision test uninstall
 

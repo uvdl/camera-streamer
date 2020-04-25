@@ -5,7 +5,7 @@ RequiresMountsFor=/usr
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/systemd/video-stream-env.conf
+EnvironmentFile=/etc/systemd/video-stream.conf
 ExecStart=/usr/local/bin/video-stream.sh
 StandardOutput=journal
 StandardError=journal
