@@ -79,16 +79,16 @@ $(SYSCFG): serial_number.py
 		fi ; \
 		if [ "$$URL" == "udp" ] ; then \
 			UDP_IFACE=$(shell $(SUDO) grep UDP_IFACE $(SYSCFG) | cut -f2 -d=) && \
-			UDP_IP=$(shell $(SUDO) grep UDP_IP $(SYSCFG) | cut -f2 -d=) && \
+			UDP_HOST=$(shell $(SUDO) grep UDP_HOST $(SYSCFG) | cut -f2 -d=) && \
 			UDP_PORT=$(shell $(SUDO) grep UDP_PORT $(SYSCFG) | cut -f2 -d=) && \
 			read -p "Interface for video stream? ($${UDP_IFACE}) " UIF && \
 			if [ ! -z "$${UIF}" ] ; then UDP_IFACE=$${UIF} ; fi ; \
 			read -p "UDP port for video stream? ($${UDP_PORT}) " UP && \
 			if [ ! -z "$${UP}" ] ; then UDP_PORT=$${UP} ; fi ; \
-			read -p "UDP address for video stream? ($${UDP_IP}) " UIP && \
-			if [ ! -z "$${UIP}" ] ; then UDP_IP=$${UIP} ; fi ; \
+			read -p "UDP address for video stream? ($${UDP_HOST}) " UH && \
+			if [ ! -z "$${UH}" ] ; then UDP_HOST=$${UH} ; fi ; \
 			echo "UDP_IFACE=$${UDP_IFACE}" >> /tmp/$$.env && \
-			echo "UDP_IP=$${UDP_IP}" >> /tmp/$$.env && \
+			echo "UDP_HOST=$${UDP_HOST}" >> /tmp/$$.env && \
 			echo "UDP_PORT=$${UDP_PORT}" >> /tmp/$$.env ; \
 		fi ; \
 		echo "URL=\"$${URL}\"" >> /tmp/$$.env && \
