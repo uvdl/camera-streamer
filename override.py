@@ -30,7 +30,7 @@ iface lo inet loopback
 
 """
     if len(ipv4.strip().split('.'))==4:
-        txt = txt + 'iface eth0 inet static\n'
+        txt = txt + 'auto eth0\niface eth0 inet static\n'
         lan = ipv4
         txt = txt + '    address {}\n'.format(lan)
         txt = txt + '    netmask {}\n'.format('255.255.0.0')
