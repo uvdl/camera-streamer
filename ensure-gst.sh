@@ -1,10 +1,11 @@
 #!/bin/bash
 # usage:
-#   ensure-gst.sh
+#   ensure-gst.sh [--dry-run]
 #
 # Ensure that all gstreamer dependencies/modules needed are installed
 
 SUDO=$(test ${EUID} -ne 0 && which sudo)
+if [ "$1" == "--dry-run" ] ; then SUDO="echo ${SUDO}" ; fi
 if ! GST_VERSION=$(gst-launch-1.0 --version | head -1 | cut -f3 -d' ') ; then
 	# Core modules needed for gst-inspect-1.0
 	$SUDO apt-get install -y gstreamer1.0-tools gstreamer1.0-doc
@@ -58,6 +59,22 @@ for e in ${!gst[@]} ; do
 	pkgdeps[$mod]=true
 done
 
-echo "PKGDEPS=${!pkgdeps[@]}"
+#echo "PKGDEPS=${!pkgdeps[@]}"
 
+# with dry-run, just go thru packages and return an error if some are missing
+if [ "$1" == "--dry-run" ] ; then
+	declare -A todo
+	apt list --installed > /tmp/$$.pkgs 2>/dev/null	# NB: warning on stderr about unstable API
+	for m in ${!pkgdeps[@]} ; do
+		x=$(grep $m /tmp/$$.pkgs)
+		if [ -z "$x" ] ; then
+			echo "$m: missing"
+			todo[$m]=true
+		else
+			true #&& echo "$x"
+		fi
+	done
+	if [ "${#todo[@]}" -gt 0 ] ; then echo "Please run: apt-get install -y ${!todo[@]}" ; fi
+	exit ${#todo[@]}
+fi
 $SUDO apt-get install -y ${!pkgdeps[@]}

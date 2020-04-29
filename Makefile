@@ -109,7 +109,7 @@ clean:
 
 dependencies:
 	$(SUDO) apt-get update
-	@PLATFORM=$(PLATFORM) ./ensure-gst.sh
+	@PLATFORM=$(PLATFORM) ./ensure-gst.sh --dry-run
 	$(SUDO) apt-get install -y $(PKGDEPS)
 	$(MAKE) --no-print-directory $(GSTD)
 	$(MAKE) --no-print-directory $(SPEEDTEST)
