@@ -84,10 +84,12 @@ gst[encoder_conversion]=""
 declare -A encoder
 declare -A encoder_formats
 if [ -z "${config[video_encoders]}" ] ; then
-	config[video_encoders]="imxvpuenc_h264,omxh264enc,avenc_h264_omx,x264enc"
+	#config[video_encoders]="imxvpuenc_h264,omxh264enc,avenc_h264_omx,x264enc"
+	config[video_encoders]="imxvpuenc_h264,omxh264enc,x264enc"
 fi
 if [ -z "${config[audio_encoders]}" ] ; then
-	config[audio_encoders]="avenc_aac,voaacenc"
+	#config[audio_encoders]="avenc_aac,voaacenc"
+	config[audio_encoders]="voaacenc"
 fi
 
 # i.MX6
