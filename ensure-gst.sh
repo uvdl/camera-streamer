@@ -27,6 +27,8 @@ elif [ "${PLATFORM}" == "RPIX" ] ; then
 	pkgdeps[gstreamer1.0-vaapi]=true
 elif [ "${PLATFORM}" == "NVID" ] ; then
 	true
+else
+	pkgdeps[gstreamer1.0-libav]=true
 fi
 
 # gstreamer pipeline segments
@@ -37,8 +39,8 @@ gst[audioconvert]=gstreamer1.0-plugins-base
 #gst[autoaudiosink]=gstreamer1.0-plugins-bad
 gst[autovideoconvert]=gstreamer1.0-plugins-bad
 #gst[autovideosink]=gstreamer1.0-plugins-bad
-gst[avenc_aac]=gstreamer1.0-libav
-gst[avenc_h264_omx]=gstreamer1.0-libav
+#gst[avenc_aac]=gstreamer1.0-libav
+#gst[avenc_h264_omx]=gstreamer1.0-libav
 gst[fpsdisplaysink]=gstreamer1.0-plugins-bad
 gst[flvmux]=gstreamer1.0-plugins-good
 gst[imxipuvideotransform]=
