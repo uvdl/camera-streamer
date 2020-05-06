@@ -391,7 +391,8 @@ function transformer {
 	local result="videoconvert ! ${gst[videoscale]}"
 	if [[ ${gst[videoscale]} =~ .*imxipuvideotransform.* ]] ; then
 		# https://github.com/Freescale/gstreamer-imx/issues/27
-		result="videoconvert ! ${gst[videoscale]} ! $(xrawargs $1 $2 $3 Y444) ! videoconvert ! $(xrawargs $1 $2 $3 $4)"
+		#result="${gst[videoscale]} ! $(xrawargs $1 $2 $3 Y444) ! videoconvert ! $(xrawargs $1 $2 $3 $4)"
+		result="${gst[videoscale]} ! $(xrawargs $1 $2 $3 $4)"
 	fi
 	echo $result
 }
