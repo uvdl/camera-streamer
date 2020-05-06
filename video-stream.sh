@@ -293,7 +293,7 @@ for e in $(IFS=',';echo ${config[video_scalers]}) ; do
     fi
 done
 if [ -z "${gst[videoscale]}" ] ; then
-    LOG HW video scalers(s) not available - using videoscale
+    LOG HW video scalers not available - using videoscale
     gst[videoscale]="videoscale"
 fi
 
@@ -319,6 +319,7 @@ for d in /dev/video* ; do
 			LOG XRAW=$d using videoconvert
 			dev[xraw]=$d
 			enable[transform]=true
+			break
 		else
 			LOG DEBUG skip $d because no enable matches available formats
 		fi
