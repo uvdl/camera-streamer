@@ -14,8 +14,8 @@
 #     mjpg - fallback to Motion JPEG
 #     preview - render outgoing stream on local framebuffer
 #     rtmp - enable rtmp output to the internet
-#     (todo) scale - allow (up) scaling to reduce data rate from camera to encoder
-#     (todo) single - allow either rtmp or udp not both
+#     scale - allow (up) scaling to reduce data rate from camera to encoder
+#     single - allow either rtmp or udp not both
 #     speedtest - test and document upstream internet bandwidth before starting stream
 #     udp - enable UDP output to LAN
 #     xraw - fallback to RAW video (NB: may be bandwidth limited if using USB)
@@ -35,6 +35,7 @@ config[audio_latency]=${AUDIO_LATENCY_MS}   # override computed latency
 config[video_latency]=${VIDEO_LATENCY_MS}   # override computed latency
 config[audio_encoders]="${AUDIO_ENCODERS}"  # list of audio encoders to use
 config[video_encoders]="${VIDEO_ENCODERS}"  # list of video encoders to use
+config[video_scalers]="${VIDEO_SCALERS}"    # list of video scalers to use
 config[h264_profile]=${H264_PROFILE}        # high, main, baseline or empty
 config[h264_rate]=${H264_RATE}              # constant, variable or empty
 # NB: the exact ratio of the max-size-time parameter between the flvmux latency
@@ -73,7 +74,7 @@ else
 fi
 
 # defaults and flags
-_FLG="audio,debug,h264,mjpg,preview,rtmp,speedtest,udp,xraw"
+_FLG="audio,debug,h264,mjpg,preview,rtmp,scale,single,speedtest,udp,xraw"
 declare -A enable
 for k in $(IFS=',';echo $_FLG) ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
@@ -82,11 +83,14 @@ done
 # gstreamer pipeline segments
 declare -A gst
 gst[version]=$(gst-launch-1.0 --version | head -1)
-gst[encoder_conversion]=""
+gst[videoscale]=""
 
 # Define Encoder Pipelines
 declare -A encoder
 declare -A encoder_formats
+if [ -z "${config[video_scalers]}" ] ; then
+	config[video_scalers]="imxipuvideotransform"
+fi
 if [ -z "${config[video_encoders]}" ] ; then
 	#config[video_encoders]="imxvpuenc_h264,omxh264enc,avenc_h264_omx,x264enc"
 	config[video_encoders]="imxvpuenc_h264,omxh264enc,x264enc"
@@ -97,7 +101,6 @@ if [ -z "${config[audio_encoders]}" ] ; then
 fi
 
 # i.MX6
-# encoder[imxvpuenc_h264]="imxipuvideotransform ! imxvpuenc_h264 bitrate=${config[kbps]} idr-interval=$((${config[fps]} * 2))"
 encoder[imxvpuenc_h264]="imxvpuenc_h264 bitrate=${config[kbps]} idr-interval=$((${config[fps]} * 2))"
 encoder_formats[imxvpuenc_h264]='I420|NV12|GRAY8'
 # Ubuntu, RPi
@@ -140,6 +143,18 @@ function LOG {
 	echo "$*"
 }
 
+# various queue configurations
+# common buffer-limited queue (argument defines number of buffers, arg2 for leaky)
+function bufferqueue {
+	local result="queue max-size-buffers=$1 max-size-bytes=0 max-size-time=0 min-threshold-buffers=1 $2"
+	echo $result
+}
+# common time-limited queue (arguments defines number of milliseconds of queueing, arg2 for leaky)
+function timequeue {
+	local result="queue max-size-buffers=0 max-size-bytes=0 max-size-time=$(($1 * 1000000)) min-threshold-buffers=1 $2"
+	echo $result
+}
+
 if ${enable[debug]} ; then
     for k in ${!config[@]} ; do
         echo "config[$k]=${config[$k]}"
@@ -157,28 +172,26 @@ fi
 # "Impossible to configure latency" warnings/errors.  We calculate the amount
 # of time for two frames at the desired frame rate (in nanoseconds).  Min 1ms.
 fps=$(( ${config[fps]} ))
-if [ -z "${config[video_latency]}" -o ${config[video_latency]} -lt 1 ] ; then
+qmst=$(( ${config[video_latency]} ))
+if [ $qmst -lt 1 ] ; then
 	# user desires minimum latency
-	if [ $fps -le 0 ] ; then qmst=1000000 ; else qmst=$(( (2000/$fps + 1) * 1000000 )) ; fi
-else
-	# user desires broadcast robustness
-	qmst=$((${config[video_latency]} * 1000000))
+	if [ $fps -le 0 ] ; then qmst=1 ; else qmst=$(( (2000/$fps + 1) )) ; fi
 fi
 # when audio is enabled, there is a minimum amount of latency that has to be taken
 # into effect.  This causes the audmux and flvmux ratios to be recalculated.
 # failure to do this will result in RTMP streaming errors
-if ${enable[audio]} && ${enable[rtmp]} && [ $qmst -le 17000000000 ] ; then
-	LOG WARNING audio+video over RTMP requires 1.7 sec latency, $(($qmst / 1000000)) ms may be too little
+if ${enable[audio]} && ${enable[rtmp]} && [ $qmst -le 1700 ] ; then
+	LOG WARNING audio+video over RTMP requires 1.7 sec latency, $qmst ms may be too little
 fi
 
 # Common parts for gst spells
 function flvmux {
-	local result="queue max-size-time=$qmst leaky=upstream ! mux.video flvmux streamable=true name=mux"
-	if [ "${PLATFORM}" == "RPIX" ] ; then result="$result latency=$(($qmst * ${config[flvmux_ratio]}))" ; fi
+	local result="$(timequeue $qmst leaky=upstream) ! mux.video flvmux streamable=true name=mux"
+	if [ "${PLATFORM}" == "RPIX" ] ; then result="$result latency=$(($qmst * ${config[flvmux_ratio]} * 1000000))" ; fi
 	echo $result
 }
 function rtpmux {
-	local result="queue max-size-time=$qmst leaky=upstream ! rtph264pay config-interval=10 pt=96 ! mux.sink_0 rtpmux name=mux"
+	local result="$(timequeue $qmst leaky=upstream) ! rtph264pay config-interval=10 pt=96 ! mux.sink_0 rtpmux name=mux"
 	echo $result
 }
 function h264args {
@@ -192,7 +205,18 @@ function mjpgargs {
 	echo $result
 }
 function xrawargs {
-	local result="\"video/x-raw,format=(string)I420,width=(int)$1,height=(int)$2,framerate=(fraction)$3\""
+	local result
+	if [ -z "$4" ] ; then
+		# format agnostic
+		result="\"video/x-raw,width=(int)$1,height=(int)$2,framerate=(fraction)$3\""
+	elif [ -z "$3" ] ; then
+		# format+framerate agnostic
+		result="\"video/x-raw,width=(int)$1,height=(int)$2\""
+	elif [ -z "$2" -o -z "$1" ] ; then
+		result="\"video/x-raw\""
+	else
+		result="\"video/x-raw,format=(string)$4,width=(int)$1,height=(int)$2,framerate=(fraction)$3\""
+	fi
 	echo $result
 }
 function overlay {
@@ -255,8 +279,22 @@ for e in $(IFS=',';echo ${config[video_encoders]}) ; do
     fi
 done
 if [ -z "${gst[encoder]}" -o -z "${gst[encoder_formats]}" ] ; then
-    LOG NO Encoder available - pipeline will fail
+    LOG NO Encoder available - pipeline may fail	# NB: encoder is not used for h264 source
     gst[encoder]="queue"
+fi
+
+# Determine which video scaler we will use
+for e in $(IFS=',';echo ${config[video_scalers]}) ; do
+    LOG TRY $e
+	if gst-inspect-1.0 $e >> $log ; then
+        LOG SELECT $e
+        gst[videoscale]="$e"
+        break
+    fi
+done
+if [ -z "${gst[videoscale]}" ] ; then
+    LOG HW video scalers(s) not available - using videoscale
+    gst[videoscale]="videoscale"
 fi
 
 # video devices
@@ -275,12 +313,14 @@ for d in /dev/video* ; do
 		elif grep -E ${gst[encoder_formats]} /tmp/video.$$ && ${enable[xraw]} ; then
 			LOG XRAW=$d
 			dev[xraw]=$d
+			enable[transform]=false
 			break
 		elif ${enable[xraw]} ; then
-			LOG XRAW=$d using autovideoconvert
+			LOG XRAW=$d using videoconvert
 			dev[xraw]=$d
-			gst[encoder_conversion]="autovideoconvert !"
-			break
+			enable[transform]=true
+		else
+			LOG DEBUG skip $d because no enable matches available formats
 		fi
 	fi
 done
@@ -320,9 +360,9 @@ if ${enable[audio]} ; then
 			LOG SELECT $e
 			x=$(echo S16LE | grep -E ${encoder_formats[$e]})
 			if [ -z "$x" ] ; then
-				gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! audioconvert ! ${encoder[$e]} ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]}))"
+				gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! audioconvert ! ${encoder[$e]} ! aacparse ! $(timequeue $(($qmst * ${config[audmux_ratio]})))"
 			else
-				gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! ${encoder[$e]} ! aacparse ! queue max-size-time=$(($qmst * ${config[audmux_ratio]}))"
+				gst[audiopipeline]="alsasrc device=\"${dev[audio]}\" ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! ${encoder[$e]} ! aacparse ! $(timequeue $(($qmst * ${config[audmux_ratio]})))"
 			fi
 			if ${enable[rtmp]} ; then
 				gst[audiopipeline]="${gst[audiopipeline]} ! mux.audio"
@@ -339,19 +379,46 @@ if [ -z "${gst[audiopipeline]}" ] ; then
 	LOG NO Audio encoder available
 fi
 
+# TODO: determine which video source we will use.  Options are v4l2src (default), uvch264src/uvch264mjpgdemux (if installed) and imxv4l2videosrc (imx6)
+function videosource {
+	local result="v4l2src device=$2 io-mode=mmap"
+	if [ "$1" == "test" ] ; then result="videotestsrc is-live=true" ; fi
+	echo $result
+}
+
+function transformer {
+	local result="videoconvert ! ${gst[videoscale]}"
+	if [[ ${gst[videoscale]} =~ .*imxipuvideotransform.* ]] ; then
+		# https://github.com/Freescale/gstreamer-imx/issues/27
+		result="videoconvert ! ${gst[videoscale]} ! $(xrawargs $1 $2 $3 Y444) ! videoconvert ! $(xrawargs $1 $2 $3 $4)"
+	fi
+	echo $result
+}
+
 # Determine source pipeline in priority: H264->MJPG->XRAW->TEST
 if [ ! -z "${dev[h264]}" ] ; then
 	sourceinfo="H.264 ${dev[h264]} ${config[width]} ${config[height]} ${config[fps]}"
-	gst[sourcepipeline]="v4l2src device=${dev[h264]} io-mode=mmap"
+	gst[sourcepipeline]="$(videosource h264 ${dev[h264]})"
 elif [ ! -z "${dev[mjpg]}" ] ; then
 	sourceinfo="MJPG ${dev[mjpg]} ${config[width]} ${config[height]} ${config[fps]}"
-	gst[sourcepipeline]="v4l2src device=${dev[mjpg]} io-mode=mmap ! $(mjpgargs ${config[width]} ${config[height]} ${config[fps]}) ! jpegdec ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[encoder]}"
+	gst[sourcepipeline]="$(videosource mjpg ${dev[mjpg]}) ! $(mjpgargs ${config[width]} ${config[height]} ${config[fps]}) ! jpegdec ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420) ! ${gst[encoder]}"
 elif [ ! -z "${dev[xraw]}" ] ; then
-	sourceinfo="XRAW ${dev[xraw]} ${config[width]} ${config[height]} ${config[fps]}"
-	gst[sourcepipeline]="v4l2src device=${dev[xraw]} io-mode=mmap ! ${gst[encoder_conversion]} $(xrawargs ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[encoder]}"
+	height=$(( ${config[height]} ))
+	if ${enable[scale]} && [ ${height/.*} -gt 480 ] ; then
+		# for USB2.0, cameras cannot emit 1080p@30fps/720p@30fps so we pull 640x360@30fps and upscale
+		sourceinfo="XRAW ${dev[xraw]} 640>${config[width]} 360>$height $fps"
+		gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs 640 360 ${config[fps]}) ! $(transformer ${config[width]} ${config[height]} ${config[fps]} I420) ! ${gst[encoder]}"
+	elif ${enable[transform]} ; then
+		sourceinfo="XRAW ${dev[xraw]} ${config[width]} ${config[height]} ${config[fps]} (transformed)"
+		# NB: videoconvert should negotiate optimally so a camera that can emit I420 will be slightly more efficient
+		gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]}) ! $(transformer ${config[width]} ${config[height]} ${config[fps]} I420) ! ${gst[encoder]}"
+	else
+		sourceinfo="XRAW ${dev[xraw]} ${config[width]} ${config[height]} ${config[fps]}"
+		gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420) ! $encoder"
+	fi
 else
 	sourceinfo="TEST ${config[width]} ${config[height]} ${config[fps]}"
-	gst[sourcepipeline]="videotestsrc is-live=true ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]}) ! $(overlay ${config[width]} ${config[height]} ${config[fps]} overlay ${gst[encoder]}) ! ${gst[encoder]}"
+	gst[sourcepipeline]="$(videosource test) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420) ! $(overlay ${config[width]} ${config[height]} ${config[fps]} overlay ${gst[encoder]}) ! ${gst[encoder]}"
 fi
 
 # perform a speedtest before launching the pipeline if so configured
@@ -373,16 +440,16 @@ fi
 
 # 2nd Sink for diagnostics/file recording
 if ${enable[preview]} ; then
-	gst[filesink]="queue max-size-time=$qmst ! $(overlay ${config[width]} ${config[height]} ${config[fps]} message $message) ! progressreport ! fpsdisplaysink sync=false video-sink=autovideosink"
+	gst[filesink]="$(timequeue $qmst leaky=downstream) ! $(overlay ${config[width]} ${config[height]} ${config[fps]} message $message) ! progressreport ! fpsdisplaysink sync=false video-sink=autovideosink"
 else
-	gst[filesink]="queue max-size-time=$qmst ! progressreport ! fakesink"
+	gst[filesink]="$(timequeue $qmst leaky=downstream) ! progressreport ! fakesink"
 fi
 
 # Cast gstreamer spell
 # http://gstreamer-devel.966125.n4.nabble.com/Does-Gstreamer-has-a-element-that-can-split-one-stream-into-two-td966351.html
 # https://serverfault.com/a/975753
 # https://stackoverflow.com/questions/59085054/gstreamer-issue-with-adding-timeoverlay-on-rtmp-stream
-echo "GST_DEBUG=1 G_DEBUG=fatal-criticals gst-launch-1.0 ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}" > $logdir/gst.cmd.$$
+echo "gst-launch-1.0 ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}" > $logdir/gst.cmd.$$
 LOG BEGIN $sourceinfo ${config[kbps]} kbps $logdir/gst.cmd.$$
 cat $logdir/gst.cmd.$$
 if ${enable[debug]} ; then exit 0 ; fi
