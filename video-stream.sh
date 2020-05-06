@@ -10,9 +10,13 @@
 #   FLAGS: overrides a list of flags to enable
 #     audio - enable audio source multiplexing
 #     debug - perform a dry-run and only report the pipeline that would be executed
-#     rtmp - enable rtmp output to the internet
 #     h264 - prefer H.264 source from camera
 #     mjpg - fallback to Motion JPEG
+#     preview - render outgoing stream on local framebuffer
+#     rtmp - enable rtmp output to the internet
+#     (todo) scale - allow (up) scaling to reduce data rate from camera to encoder
+#     (todo) single - allow either rtmp or udp not both
+#     speedtest - test and document upstream internet bandwidth before starting stream
 #     udp - enable UDP output to LAN
 #     xraw - fallback to RAW video (NB: may be bandwidth limited if using USB)
 #
