@@ -10,9 +10,11 @@
 #   FLAGS: overrides a list of flags to enable
 #     audio - enable audio source multiplexing
 #     debug - perform a dry-run and only report the pipeline that would be executed
-#     rtmp - enable rtmp output to the internet
 #     h264 - prefer H.264 source from camera
 #     mjpg - fallback to Motion JPEG
+#     preview - render outgoing stream on local framebuffer
+#     rtmp - enable rtmp output to the internet
+#     speedtest - test and document upstream internet bandwidth before starting stream
 #     udp - enable UDP output to LAN
 #     xraw - fallback to RAW video (NB: may be bandwidth limited if using USB)
 #
@@ -225,17 +227,19 @@ fi
 # UDP to IP:PORT (separate video and audio ports)
 
 # Sync with server
-response=false
-if [ -z "${SERVER}" ] ; then _ARG="" && SERVER="internet" ; else _ARG="socket ${SERVER}" ; fi
-LOG SYNC with ${SERVER}
-while true ; do
-	if x=$(python /usr/local/bin/internet.py ${_ARG}) ; then response=true ; break ; fi
-	sleep 5
-done
-if ! $response ; then
-	LOG NO response from ${SERVER}, pipeline may fail
-	#gst[avsink]="$(flvmux) ! fakesink"
-	#gst[avsink]="$(rtpmux) ! fakesink"
+if ${enable[rtmp]} ; then	# TODO: separate internet from rtmp
+	response=false
+	if [ -z "${SERVER}" ] ; then _ARG="" && SERVER="internet" ; else _ARG="socket ${SERVER}" ; fi
+	LOG SYNC with ${SERVER}
+	while true ; do
+		if x=$(python /usr/local/bin/internet.py ${_ARG}) ; then response=true ; break ; fi
+		sleep 5
+	done
+	if ! $response ; then
+		LOG NO response from ${SERVER}, pipeline may fail
+		#gst[avsink]="$(flvmux) ! fakesink"
+		#gst[avsink]="$(rtpmux) ! fakesink"
+	fi
 fi
 
 # Determine which device we will use
@@ -378,7 +382,7 @@ fi
 # http://gstreamer-devel.966125.n4.nabble.com/Does-Gstreamer-has-a-element-that-can-split-one-stream-into-two-td966351.html
 # https://serverfault.com/a/975753
 # https://stackoverflow.com/questions/59085054/gstreamer-issue-with-adding-timeoverlay-on-rtmp-stream
-echo "GST_DEBUG=1 G_DEBUG=fatal-criticals gst-launch-1.0 ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}" > $logdir/gst.cmd.$$
+echo "gst-launch-1.0 ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}" > $logdir/gst.cmd.$$
 LOG BEGIN $sourceinfo ${config[kbps]} kbps $logdir/gst.cmd.$$
 cat $logdir/gst.cmd.$$
 if ${enable[debug]} ; then exit 0 ; fi

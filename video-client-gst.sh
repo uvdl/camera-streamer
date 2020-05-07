@@ -30,7 +30,6 @@ config[video_port]="$1" ; if [ -z "${config[video_port]}" ] ; then config[video_
 config[audio_port]="$2" ; if [ -z "${config[audio_port]}" ] ; then config[audio_port]=0 ; fi
 config[udp_ip]="$3"
 config[mcast_if]="$4" ; if [ -z "${config[mcast_if]}" ] ; then config[mcast_if]=eth0 ; fi
-config[ttl]=10
 config[video_caps]="application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264,payload=(int)96"
 config[audio_caps]="application/x-rtp"
 
@@ -40,7 +39,7 @@ if [ -z "${config[udp_ip]}" ] ; then
 	gst[udpsrc]="udpsrc"
 elif [ ${config[udp_ip]/.*} -ge 224 -a ${config[udp_ip]/.*} -le 239 ] ; then
 	# Multicast source semantics
-	gst[udpsrc]="udpsrc address=${config[udp_ip]} multicast-iface=${config[mcast_if]} auto-multicast=true ttl=${config[ttl]}"
+	gst[udpsrc]="udpsrc address=${config[udp_ip]} multicast-iface=${config[mcast_if]} auto-multicast=true"
 else
 	# Unicast source semantics
 	gst[udpsrc]="udpsrc address=${config[udp_ip]}"
