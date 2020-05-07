@@ -253,17 +253,19 @@ fi
 # UDP to IP:PORT (separate video and audio ports)
 
 # Sync with server
-response=false
-if [ -z "${SERVER}" ] ; then _ARG="" && SERVER="internet" ; else _ARG="socket ${SERVER}" ; fi
+if ${enable[rtmp]} ; then	# TODO: separate internet from rtmp
+	response=false
+	if [ -z "${SERVER}" ] ; then _ARG="" && SERVER="internet" ; else _ARG="socket ${SERVER}" ; fi
 LOG SYNC with ${SERVER}
-while true ; do
-	if x=$(python /usr/local/bin/internet.py ${_ARG}) ; then response=true ; break ; fi
-	sleep 5
-done
-if ! $response ; then
-	LOG NO response from ${SERVER}, pipeline may fail
-	#gst[avsink]="$(flvmux) ! fakesink"
-	#gst[avsink]="$(rtpmux) ! fakesink"
+	while true ; do
+		if x=$(python /usr/local/bin/internet.py ${_ARG}) ; then response=true ; break ; fi
+		sleep 5
+	done
+	if ! $response ; then
+		LOG NO response from ${SERVER}, pipeline may fail
+		#gst[avsink]="$(flvmux) ! fakesink"
+		#gst[avsink]="$(rtpmux) ! fakesink"
+	fi
 fi
 
 # Determine which device we will use
