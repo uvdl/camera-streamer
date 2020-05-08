@@ -36,7 +36,9 @@ set UDP_IP=%DEFAULT_UDP_IP%
 :arg4
 @rem https://stackoverflow.com/questions/761615/is-there-a-way-to-indicate-the-last-n-parameters-in-a-batch-file/761658#761658
 @if "%4"=="" goto arg4default
-shift /3
+shift
+shift
+shift
 set MCAST_IFACE=%1
 :arg4loop
 shift
@@ -49,20 +51,26 @@ set MCAST_IFACE=%DEFAULT_MCAST_IFACE%
 
 @rem compute the source command with respect to the UDP address
 @for /F "tokens=1 delims=." %%a in ("%UDP_IP%") do ( set OCTET=%%a )
-@if /I "%OCTET%" GEQ "224" (
-	@if /I "%OCTET%" LEQ "239" (
+@if /I "%OCTET%" GEQ "224 " (
+	@if /I "%OCTET%" LEQ "239 " (
 		@rem Multicast source semantics
-		set UDPSRC=udpsrc address=%UDP_IP% multicast-iface="%MCAST_IFACE%" auto-multicast=true
+		echo "Multicast"
+		@rem set UDPSRC=udpsrc address=%UDP_IP% multicast-iface="%MCAST_IFACE%" auto-multicast=true
+		set UDPSRC=udpsrc uri=udp://%UDP_IP%:%VIDEO_PORT%
 	) else (
 		@rem Unicast source semantics
+		echo "Unicast greater than 239."
 		set UDPSRC=udpsrc address=%UDP_IP%
 	)
 ) else if "%OCTET%"=="" (
 	@rem Agnostic source semantics
+	echo "Agnostic"
 	set UDPSRC=udpsrc
 ) else (
 	@rem Unicast source semantics
-	set UDPSRC=udpsrc address=%UDP_IP%
+	echo "Unicast less than 224."
+	@rem set UDPSRC=udpsrc address=%UDP_IP%
+	set UDPSRC=udpsrc uri=udp://%UDP_IP%:%VIDEO_PORT%
 )
 
 @rem launch different spells depending on the balance of video/audio port
@@ -78,8 +86,10 @@ set MCAST_IFACE=%DEFAULT_MCAST_IFACE%
     )
 ) else if /I "%AUDIO_PORT%" EQU "0" (
     @rem video only
-    @echo gst-launch-1.0 %UDPSRC% port=%VIDEO_PORT% caps="%VIDEO_CAPS%" ! rtph264depay ! h264parse ! queue ! decodebin ! progressreport ! autovideosink
-    gst-launch-1.0 %UDPSRC% port=%VIDEO_PORT% caps="%VIDEO_CAPS%" ! rtph264depay ! h264parse ! queue ! decodebin ! progressreport ! autovideosink
+    @rem echo gst-launch-1.0 %UDPSRC% port=%VIDEO_PORT% caps="%VIDEO_CAPS%" ! rtph264depay ! h264parse ! queue ! decodebin ! progressreport ! autovideosink
+    @rem gst-launch-1.0 %UDPSRC% port=%VIDEO_PORT% caps="%VIDEO_CAPS%" ! rtph264depay ! h264parse ! queue ! decodebin ! progressreport ! autovideosink
+    @echo gst-launch-1.0 %UDPSRC% caps="%VIDEO_CAPS%" ! rtph264depay ! h264parse ! queue ! decodebin ! progressreport ! autovideosink
+    gst-launch-1.0 %UDPSRC% caps="%VIDEO_CAPS%" ! rtph264depay ! h264parse ! queue ! decodebin ! progressreport ! autovideosink
 ) else if /I "%VIDEO_PORT%" EQU "%AUDIO_PORT%" (
     @rem video+audio using same port (flvmux)
     @echo gst-launch-1.0 %UDPSRC% port=%VIDEO_PORT% ! queue ! flvdemux name=mux mux.video ! "%VIDEO_CAPS%" ! rtph264depay ! h264parse ! queue ! decodebin ! autovideosink mux.audio ! "%AUDIO_CAPS%" ! rtpmp4adepay ! "audio/mpeg,codec_data=(buffer)1290" ! queue ! decodebin ! audioconvert ! autoaudiosink
