@@ -62,7 +62,7 @@ config[streamkey]=${6:-${SKEY}}
 config[flags]="${7:-${config[flags]}}"
 # udp configuration/defaults
 declare -A udp
-udp[host]=${UDP_HOST} ; if [ -z "${udp[host]}" ] ; then udp[host]=224.0.0.1 ; fi
+udp[host]=${UDP_HOST} ; if [ -z "${udp[host]}" ] ; then udp[host]=224.1.1.1 ; fi
 udp[iface]=${UDP_IFACE} ; if [ -z "${udp[iface]}" ] ; then udp[iface]=eth0 ; fi
 udp[port]=${UDP_PORT} ; if [ -z "${udp[port]}" ] ; then udp[port]=5600 ; fi
 udp[ttl]=${UDP_TTL} ; if [ -z "${udp[ttl]}" ] ; then udp[ttl]=10 ; fi

@@ -6,7 +6,7 @@ set GST_PLUGIN_PATH_1_0=%GSTREAMER_1_0_ROOT_X86_64%\lib\gstreamer-1.0
 @rem defaults if when no arguments are given (I like arguments because it makes testing easier)
 set DEFAULT_VIDEO_PORT=5600
 set DEFAULT_AUDIO_PORT=0
-set DEFAULT_UDP_IP=224.0.0.1
+set DEFAULT_UDP_IP=224.1.1.1
 set DEFAULT_MCAST_IFACE=Wireless*
 @rem These caps are obtained from the "udpsink0.GstPad:sink: caps =" line
 @rem https://stackoverflow.com/questions/49958663/how-to-properly-escape-parentheses-in-windows-batch-file
