@@ -7,7 +7,7 @@ set GST_PLUGIN_PATH_1_0=%GSTREAMER_1_0_ROOT_X86_64%\lib\gstreamer-1.0
 set DEFAULT_VIDEO_PORT=5600
 set DEFAULT_AUDIO_PORT=0
 set DEFAULT_UDP_IP=224.1.1.1
-set DEFAULT_MCAST_IFACE=Wireless*
+set DEFAULT_MCAST_IFACE=*Wi-Fi
 @rem These caps are obtained from the "udpsink0.GstPad:sink: caps =" line
 @rem https://stackoverflow.com/questions/49958663/how-to-properly-escape-parentheses-in-windows-batch-file
 set "VIDEO_CAPS=application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264,payload=(int)96"
