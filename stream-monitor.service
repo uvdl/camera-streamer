@@ -1,12 +1,12 @@
 [Unit]
 Description=Monitor Wireless Bandwidth
 After=systemd-remount-fs.service network.target nss-lookup.target
-RequiresMountsFor=/home
+RequiresMountsFor=/usr
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/systemd/rtmp-env.conf
-ExecStart=/usr/bin/python /usr/local/bin/stream-monitor.py
+EnvironmentFile=/etc/systemd/video-stream.conf
+ExecStart=/usr/bin/python3 /usr/local/bin/stream-monitor.py
 StandardOutput=journal
 StandardError=journal
 Restart=on-failure

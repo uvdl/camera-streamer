@@ -1,5 +1,5 @@
 [Unit]
-Description=RTMP Video Stream
+Description=Network Video Stream
 After=systemd-remount-fs.service network.target nss-lookup.target
 RequiresMountsFor=/usr
 

@@ -7,7 +7,6 @@ Reference:  https://electronicshobbyists.com/raspberry-pi-pwm-tutorial-control-b
             
 """
 import os
-import RPi.GPIO as GPIO
 
 def GetNetworkStats():
     """Obtain networking statistics from /proc/net/dev.
@@ -51,12 +50,41 @@ def GetNetworkStats():
 # For command-line testing
 # ---------------------------------------------------------------------------
 
+try:
+    import RPi.GPIO as GPIO
+except ImportError:
+    # for duck-typing on non-RPi systems
+    class GPIO(object):
+        BCM = 11
+        OUT = 0
+        IN = 1
+        def __init__(self):
+            pass
+        @staticmethod
+        def cleanup():
+            pass
+        @staticmethod
+        def setmode(_x):
+            pass
+        @staticmethod
+        def setup(_pin, _dir):
+            pass
+        class PWM(object):
+            def __init__(self, _pin, _hz):
+                pass
+            def start(self, _duty):
+                pass
+            def stop(self):
+                pass
+            def ChangeDutyCycle(self, _duty):
+                pass
+
 if __name__ == "__main__":
     import sys, time
 
-    dev = sys.argv[1] if len(sys.argv)>1 else os.environ.get('MONITOR_DEV', 'wlan0')
+    dev = sys.argv[1] if len(sys.argv)>1 else os.environ.get('MONITOR_DEV', os.environ.get('UDP_IFACE', 'wlan0'))
     pin = sys.argv[2] if len(sys.argv)>2 else os.environ.get('MONITOR_PIN', '21')
-    kbps = sys.argv[3] if len(sys.argv)>3 else os.environ.get('KBPS', '1800')
+    kbps = sys.argv[3] if len(sys.argv)>3 else os.environ.get('MONITOR_KBPS', os.environ.get('H264_BITRATE', '1800'))
     pwm_hz = sys.argv[4] if len(sys.argv)>4 else os.environ.get('MONITOR_PWM_HZ', '100')
     update_sec = sys.argv[5] if len(sys.argv)>5 else os.environ.get('MONITOR_UPDATE_SEC', '1.0')
 
@@ -90,6 +118,8 @@ if __name__ == "__main__":
             pwm.ChangeDutyCycle(ratio)
             last = stats
 
+    except KeyError as e:
+        sys.stderr.write('{}: No such interface\n'.format(str(e)))
     except KeyboardInterrupt:
         pass
     finally:
