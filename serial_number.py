@@ -21,7 +21,8 @@ def serial_number():
 
     _paths = [
         ('NVID','/proc/device-tree/chosen/nvidia,ether-mac'),    # NVidia TX1/TX2/Xavier
-        ('','/factory/serial_number'),                           # Intel Edison
+        ('NVID','/proc/device-tree/chosen/nvidia,ethernet-mac'), # NVidia Jetson Nano
+	('','/factory/serial_number'),                           # Intel Edison
         ('RPIX','/proc/device-tree/serial-number'),              # Raspberry-PI
     ]
     for (t,p) in _paths:
