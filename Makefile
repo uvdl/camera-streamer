@@ -4,7 +4,7 @@ SHELL := /bin/bash
 SUDO := $(shell test $${EUID} -ne 0 && echo "sudo")
 .EXPORT_ALL_VARIABLES:
 
-PKGDEPS=automake host libtool pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev libjson-glib-dev gtk-doc-tools libreadline-dev libncursesw5-dev libdaemon-dev libjansson-dev sudo uvcdynctrl v4l-utils python3-pip
+PKGDEPS=automake host libtool pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev libjson-glib-dev gtk-doc-tools libreadline-dev libncursesw5-dev libdaemon-dev libjansson-dev sudo uvcdynctrl v4l-utils python3-netifaces python3-pip
 
 LOCAL=/usr/local
 LOCAL_APPS=gst-client gstd-client gst-client-1.0 gstd internet.py speedtest-cli video-stream.sh stream-monitor.py
@@ -12,7 +12,7 @@ FLAGS ?= "audio,h264,mjpg,rtmp,xraw"
 GSTD=$(LOCAL)/bin/gstd
 GSTD_SRC=$(LOCAL)/src/gstd-1.x
 LIBSYSTEMD=/lib/systemd/system
-PLATFORM ?= $(shell python serial_number.py | cut -c1-4)
+PLATFORM ?= $(shell python3 serial_number.py | cut -c1-4)
 RIDGERUN=https://github.com/RidgeRun
 SERVER ?= video.mavnet.online
 SERVER_PORT ?= 1935
@@ -57,7 +57,7 @@ $(SPEEDTEST): $(SPEEDTEST_SRC)
 # https://www.linuxjournal.com/article/9400
 # FIXME: this shell code in makefile is really, really dumb...
 $(SYSCFG): serial_number.py
-	@(	SN=$(shell python serial_number.py) && \
+	@(	SN=$(shell python3 serial_number.py) && \
 		URL=$(shell $(SUDO) grep URL $(SYSCFG) | cut -f2 -d=) && \
 		SKEY=$(shell $(SUDO) grep SKEY $(SYSCFG) | cut -f2 -d=) && \
 		AUDIO=$(shell $(SUDO) grep AUDIO $(SYSCFG) | cut -f2 -d=) && \
