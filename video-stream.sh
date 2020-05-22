@@ -137,10 +137,11 @@ elif [ "${config[h264_rate]}" == "variable" ] ; then
 fi
 
 # logging to file and stdout (which is journaled under systemd)
+# https://stackoverflow.com/questions/2990414/echo-that-outputs-to-stderr
 function LOG {
 	mkdir -p $(dirname $log)
 	echo "$(date --iso-8601='seconds') $*" >> $log
-	echo "$*"
+	>&2 echo "$*"
 }
 
 # various queue configurations
