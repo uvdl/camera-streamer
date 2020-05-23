@@ -4,7 +4,7 @@ SHELL := /bin/bash
 SUDO := $(shell test $${EUID} -ne 0 && echo "sudo")
 .EXPORT_ALL_VARIABLES:
 
-PKGDEPS=automake host libtool pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev libjson-glib-dev gtk-doc-tools libreadline-dev libncursesw5-dev libdaemon-dev libjansson-dev sudo uvcdynctrl v4l-utils python3-pip
+PKGDEPS=automake host libtool pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev libjson-glib-dev gtk-doc-tools libreadline-dev libncursesw5-dev libdaemon-dev libjansson-dev sudo uvcdynctrl v4l-utils python3-netifaces python3-pip
 
 LOCAL=/usr/local
 LOCAL_APPS=gst-client gstd-client gst-client-1.0 gstd internet.py speedtest-cli video-stream.sh stream-monitor.py
@@ -12,7 +12,7 @@ FLAGS ?= "audio,h264,mjpg,rtmp,xraw"
 GSTD=$(LOCAL)/bin/gstd
 GSTD_SRC=$(LOCAL)/src/gstd-1.x
 LIBSYSTEMD=/lib/systemd/system
-PLATFORM ?= $(shell python serial_number.py | cut -c1-4)
+PLATFORM ?= $(shell python3 serial_number.py | cut -c1-4)
 RIDGERUN=https://github.com/RidgeRun
 SERVER ?= video.mavnet.online
 SERVER_PORT ?= 1935
@@ -57,12 +57,12 @@ $(SPEEDTEST): $(SPEEDTEST_SRC)
 # https://www.linuxjournal.com/article/9400
 # FIXME: this shell code in makefile is really, really dumb...
 $(SYSCFG): serial_number.py
-	@(	SN=$(shell python serial_number.py) && \
+	@(	SN=$(shell python3 serial_number.py) && \
 		URL=$(shell $(SUDO) grep URL $(SYSCFG) | cut -f2 -d=) && \
 		SKEY=$(shell $(SUDO) grep SKEY $(SYSCFG) | cut -f2 -d=) && \
 		AUDIO=$(shell $(SUDO) grep AUDIO $(SYSCFG) | cut -f2 -d=) && \
 		LATENCY_MS=$(shell $(SUDO) grep LATENCY_MS $(SYSCFG) | cut -f2 -d=) && \
-		read -p "URL for video server? ($${URL}) " UR && \
+		read -p "udp or URL for video server? ($${URL}) " UR && \
 		if [ ! -z "$${UR}" ] ; then URL=$${UR} ; fi ; \
 		if [ -z "$${SKEY}}" ] ; then SKEY=$${SN} ; fi ; \
 		read -p "Stream Key? ($${SKEY}) " SK && \
@@ -81,10 +81,11 @@ $(SYSCFG): serial_number.py
 			URL="rtmp://$${SERVER}:$${SERVER_PORT}/$${SERVER_GROUP}" ; \
 		fi ; \
 		if [ "$$URL" == "udp" ] ; then \
+			FLAGS="audio,h264,mjpg,udp,xraw"
 			UDP_IFACE=$(shell $(SUDO) grep UDP_IFACE $(SYSCFG) | cut -f2 -d=) && \
 			UDP_HOST=$(shell $(SUDO) grep UDP_HOST $(SYSCFG) | cut -f2 -d=) && \
 			UDP_PORT=$(shell $(SUDO) grep UDP_PORT $(SYSCFG) | cut -f2 -d=) && \
-			read -p "Interface for video stream? ($${UDP_IFACE}) " UIF && \
+			read -p "Network interface device for udp ($${UDP_IFACE}) " UIF && \
 			if [ ! -z "$${UIF}" ] ; then UDP_IFACE=$${UIF} ; fi ; \
 			read -p "UDP port for video stream? ($${UDP_PORT}) " UP && \
 			if [ ! -z "$${UP}" ] ; then UDP_PORT=$${UP} ; fi ; \
@@ -94,7 +95,7 @@ $(SYSCFG): serial_number.py
 			echo "UDP_HOST=$${UDP_HOST}" >> /tmp/$$.env && \
 			echo "UDP_PORT=$${UDP_PORT}" >> /tmp/$$.env ; \
 		fi ; \
-		echo "URL=\"$${URL}\"" >> /tmp/$$.env && \
+		echo "URL=$${URL}" >> /tmp/$$.env && \
 		echo "SKEY=$${SKEY}" >> /tmp/$$.env && \
 		echo "FLAGS=$(FLAGS)" >> /tmp/$$.env && \
 		read -p "Audio Device? ($${AUDIO}) " ADEV && \

@@ -137,10 +137,11 @@ elif [ "${config[h264_rate]}" == "variable" ] ; then
 fi
 
 # logging to file and stdout (which is journaled under systemd)
+# https://stackoverflow.com/questions/2990414/echo-that-outputs-to-stderr
 function LOG {
 	mkdir -p $(dirname $log)
 	echo "$(date --iso-8601='seconds') $*" >> $log
-	echo "$*"
+	>&2 echo "$*"
 }
 
 # various queue configurations
@@ -157,13 +158,13 @@ function timequeue {
 
 if ${enable[debug]} ; then
     for k in ${!config[@]} ; do
-        echo "config[$k]=${config[$k]}"
+        >&2 echo "config[$k]=${config[$k]}"
     done
     for k in ${!enable[@]} ; do
-        echo "enable[$k]=${enable[$k]}"
+        >&2 echo "enable[$k]=${enable[$k]}"
     done
     for k in ${!udp[@]} ; do
-        echo "udp[$k]=${udp[$k]}"
+        >&2 echo "udp[$k]=${udp[$k]}"
     done
     #exit 0
 fi
@@ -303,7 +304,6 @@ fi
 declare -A dev
 for d in /dev/video* ; do
 	if v4l2-ctl -d $d --list-formats > /tmp/video.$$ ; then
-		cat /tmp/video.$$
 		if grep H264 /tmp/video.$$ && ${enable[h264]} ; then
 			LOG H264=$d
 			dev[h264]=$d
@@ -323,6 +323,7 @@ for d in /dev/video* ; do
 			enable[transform]=true
 			break
 		else
+			>&2 cat /tmp/video.$$
 			LOG DEBUG skip $d because no enable matches available formats
 		fi
 	fi
