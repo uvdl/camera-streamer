@@ -21,8 +21,8 @@
 #     xraw - fallback to RAW video (NB: may be bandwidth limited if using USB)
 #
 # TODO: https://github.com/Freescale/gstreamer-imx/issues/206
-logdir=/tmp
-if [ ! -d $logdir ] ; then logdir=/tmp ; fi ; log=$logdir/video.log
+if [ -z "$RUNTIME_DIRECTORY" ] ; then logdir=/tmp ; else logdir=$RUNTIME_DIRECTORY ; fi
+log=$logdir/video.log
 # configuration items (defaults)
 declare -A config
 config[width]=${WIDTH} ; if [ -z "${config[width]}" ] ; then config[width]=1280 ; fi
@@ -304,15 +304,15 @@ fi
 declare -A dev
 for d in /dev/video* ; do
 	if v4l2-ctl -d $d --list-formats > /tmp/video.$$ ; then
-		if grep H264 /tmp/video.$$ && ${enable[h264]} ; then
+		if grep H264 /tmp/video.$$ > /dev/null && ${enable[h264]} ; then
 			LOG H264=$d
 			dev[h264]=$d
 			break	# prefer H264 over MJPG/YUYV
-		elif grep MJPG /tmp/video.$$ && ${enable[mjpg]} ; then
+		elif grep MJPG /tmp/video.$$ > /dev/null && ${enable[mjpg]} ; then
 			LOG MJPG=$d
 			dev[mjpg]=$d
 			break   # prefer MJPG over YUYV
-		elif grep -E ${gst[encoder_formats]} /tmp/video.$$ && ${enable[xraw]} ; then
+		elif grep -E ${gst[encoder_formats]} /tmp/video.$$ > /dev/null && ${enable[xraw]} ; then
 			LOG XRAW=$d
 			dev[xraw]=$d
 			enable[transform]=false
@@ -343,7 +343,7 @@ if ${enable[audio]} ; then
 		d=$(echo $p | cut -f2 -d, | cut -f1 -d: | cut -f3 -d' ')
 		LOG TRY "hw:${c},${d}"
 		gst-launch-1.0 -v alsasrc device="hw:${c},${d}" num-buffers=0 ! fakesink 2>&1 | sed -une '/src: caps/ s/[:;] /\n/gp' > /tmp/audio.$$
-		if grep S16LE /tmp/audio.$$ && ${enable[audio]} ; then
+		if grep S16LE /tmp/audio.$$ > /dev/null && ${enable[audio]} ; then
 			echo "hw:${c},${d}" > $logdir/gst.audio.dev.$$
 		fi
 	done
