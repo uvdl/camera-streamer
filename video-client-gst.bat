@@ -10,8 +10,13 @@ set DEFAULT_UDP_IP=224.1.1.1
 set DEFAULT_MCAST_IFACE=*Wi-Fi
 @rem These caps are obtained from the "udpsink0.GstPad:sink: caps =" line
 @rem https://stackoverflow.com/questions/49958663/how-to-properly-escape-parentheses-in-windows-batch-file
-set "VIDEO_CAPS=application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264,payload=(int)96"
 set "AUDIO_CAPS=application/x-rtp"
+set "VIDEO_CAPS=application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264,payload=(int)96"
+@rem Audio buffer is based on the AAC encoder channels: 1208=1 channel, 1210=2 channel
+@rem https://stackoverflow.com/questions/7760545/escape-double-quotes-in-parameter
+set "AUDIO_DEPAY=rtpmp4adepay ! ^"audio/mpeg,codec_data=(buffer)1208^" ! queue"
+set "VIDEO_DEPAY=rtph264depay ! h264parse ! queue"
+
 
 @rem accept command line arguments for Video/Audio Port, IP address
 @rem https://stackoverflow.com/questions/42283939/set-variable-inside-if-statement-windows-batch-file
@@ -77,19 +82,19 @@ set MCAST_IFACE=%DEFAULT_MCAST_IFACE%
         gst-launch-1.0 videotestsrc is-live=true ! "video/x-raw,format=(string)I420,width=(int)640,height=(int)360,framerate=30/1" ! videoconvert ! autovideosink
     ) else (
         @rem audio only
-        @echo gst-launch-1.0 %UDPSRC%%AUDIO_PORT% caps="%AUDIO_CAPS%" ! rtpmp4adepay ! "audio/mpeg,codec_data=(buffer)1290" ! queue ! decodebin ! audioconvert ! directsoundsink sync=false
-        gst-launch-1.0 %UDPSRC%%AUDIO_PORT% caps="%AUDIO_CAPS%" ! rtpmp4adepay ! "audio/mpeg,codec_data=(buffer)1290" ! queue ! decodebin ! audioconvert ! directsoundsink sync=false
+        @echo gst-launch-1.0 %UDPSRC%%AUDIO_PORT% caps="%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
+        gst-launch-1.0 %UDPSRC%%AUDIO_PORT% caps="%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
     )
 ) else if /I "%AUDIO_PORT%" EQU "0" (
     @rem video only
-    @echo gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%" ! rtph264depay ! h264parse ! queue ! decodebin ! progressreport ! autovideosink
-    gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%" ! rtph264depay ! h264parse ! queue ! decodebin ! progressreport ! autovideosink
+    @echo gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%" ! %VIDEO_DEPAY% ! decodebin ! progressreport ! autovideosink
+    gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%" ! %VIDEO_DEPAY% ! decodebin ! progressreport ! autovideosink
 ) else if /I "%VIDEO_PORT%" EQU "%AUDIO_PORT%" (
     @rem video+audio using same port (flvmux)
-    @echo gst-launch-1.0 %UDPSRC%%VIDEO_PORT% ! queue ! flvdemux name=mux mux.video ! "%VIDEO_CAPS%" ! rtph264depay ! h264parse ! queue ! decodebin ! autovideosink mux.audio ! "%AUDIO_CAPS%" ! rtpmp4adepay ! "audio/mpeg,codec_data=(buffer)1290" ! queue ! decodebin ! audioconvert ! directsoundsink sync=false
-    gst-launch-1.0 %UDPSRC%%VIDEO_PORT% ! queue ! flvdemux name=mux mux.video ! "%VIDEO_CAPS%" ! rtph264depay ! h264parse ! queue ! decodebin ! autovideosink mux.audio ! "%AUDIO_CAPS%" ! rtpmp4adepay ! "audio/mpeg,codec_data=(buffer)1290" ! queue ! decodebin ! audioconvert ! directsoundsink sync=false
+    @echo gst-launch-1.0 %UDPSRC%%VIDEO_PORT% ! queue ! flvdemux name=mux mux.video ! "%VIDEO_CAPS%" ! %VIDEO_DEPAY% ! decodebin ! autovideosink mux.audio ! "%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
+    gst-launch-1.0 %UDPSRC%%VIDEO_PORT% ! queue ! flvdemux name=mux mux.video ! "%VIDEO_CAPS%" ! %VIDEO_DEPAY% ! decodebin ! autovideosink mux.audio ! "%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
 ) else (
     @rem video+audio using separate ports no mux
-    @echo gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%" ! rtph264depay ! h264parse ! queue ! decodebin ! autovideosink udpsrc %UDPSRC%%AUDIO_PORT% caps="%AUDIO_CAPS%" ! rtpmp4adepay ! "audio/mpeg,codec_data=(buffer)1290" ! queue ! decodebin ! audioconvert ! directsoundsink sync=false
-    gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%" ! rtph264depay ! h264parse ! queue ! decodebin ! autovideosink udpsrc %UDPSRC%%AUDIO_PORT% caps="%AUDIO_CAPS%" ! rtpmp4adepay ! "audio/mpeg,codec_data=(buffer)1290" ! queue ! decodebin ! audioconvert ! directsoundsink sync=false
+    @echo gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%" ! %VIDEO_DEPAY% ! decodebin ! autovideosink udpsrc %UDPSRC%%AUDIO_PORT% caps="%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
+    gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%" ! %VIDEO_DEPAY% ! decodebin ! autovideosink udpsrc %UDPSRC%%AUDIO_PORT% caps="%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
 )
