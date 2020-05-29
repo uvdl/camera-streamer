@@ -21,7 +21,9 @@
 #     xraw - fallback to RAW video (NB: may be bandwidth limited if using USB)
 #
 # TODO: https://github.com/Freescale/gstreamer-imx/issues/206
-if [ -z "$RUNTIME_DIRECTORY" ] ; then logdir=/tmp ; else logdir=$RUNTIME_DIRECTORY ; fi
+## NB: RUNTIME_DIRECTORY does not seem to be populated as the systemd docs say...
+##if [ -z "$RUNTIME_DIRECTORY" ] ; then logdir=/tmp ; else logdir=$RUNTIME_DIRECTORY ; fi
+if [ -d /var/run/video-stream ] ; then logdir=/var/run/video-stream ; else logdir=/tmp ; fi
 log=$logdir/video.log
 # configuration items (defaults)
 declare -A config
