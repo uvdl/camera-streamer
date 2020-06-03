@@ -343,7 +343,7 @@ declare -A dev
 for d in /dev/video* ; do
 	if v4l2-ctl -d $d --list-formats > /tmp/video.$$ ; then
 		LOG DEBUG consider $d
-		>&2 cat /tmp/video.$$
+		>&2 cat /tmp/video.$$ >> $log
 		if grep H264 /tmp/video.$$ > /dev/null && ${enable[h264]} ; then
 			LOG H264=$d
 			dev[h264]=$d
@@ -357,19 +357,24 @@ for d in /dev/video* ; do
 		elif [ -z "${gst[encoder_formats]}" ] ; then
 			LOG DEBUG skip $d because no encoder format is given
 		else
+			height=$(( ${config[height]} ))
+			if ${enable[scale]} && [ ${height/.*} -gt 480 ] ; then height=360 ; fi
 			( gst-launch-1.0 --gst-debug=v4l2src:5 v4l2src device=$d num-buffers=0 ! fakesink 2>&1 | sed -une '/caps of src/ s/[:;] /\n/gp' ) > /tmp/format.$$
-			>&2 cat /tmp/format.$$
-			if grep -E ${gst[encoder_formats]} /tmp/format.$$ > /dev/null ; then
+			>&2 cat /tmp/format.$$ >> $log
+			if grep -E ${gst[encoder_formats]} /tmp/format.$$ | grep -E $height > /dev/null ; then
 				LOG XRAW=$d
 				dev[xraw]=$d
 				enable[transform]=false
-				break
-			elif grep -E YUY2 /tmp/format.$$ > /dev/null ; then
+				LOG DEBUG continue to consider other devices
+				# keep considering other devices
+			elif grep -E YUY2 /tmp/format.$$ | grep -E $height > /dev/null ; then
 				LOG XRAW=$d using videoconvert
 				dev[xraw]=$d
 				enable[transform]=true
 				LOG DEBUG continue to consider other devices
 				# keep considering other devices
+			else
+				LOG DEBUG skip $d because no mode with image height of $height exists
 			fi
 		fi
 	fi
