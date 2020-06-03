@@ -305,6 +305,9 @@ for e in $(IFS=',';echo ${config[video_encoders]}) ; do
 done
 if [ -z "${gst[encoder]}" ] || [ -z "${gst[encoder_formats]}" ] ; then
     if ${enable[debug]} ; then
+        for k in ${!encoder[@]} ; do
+            >&2 echo "encoder[$k]=${encoder[$k]}"
+        done
         for k in ${!gst[@]} ; do
             >&2 echo "gst[$k]=${gst[$k]}"
         done
@@ -348,17 +351,21 @@ for d in /dev/video* ; do
 			dev[mjpg]=$d
 			break   # prefer MJPG over YUYV
 		elif ${enable[xraw]} ; then
-            if [ ! -z "${gst[encoder_formats]}" ] && grep -E ${gst[encoder_formats]} /tmp/video.$$ > /dev/null ; then
-			    LOG XRAW=$d
-			    dev[xraw]=$d
-			    enable[transform]=false
-			    break
-		    else
-			    LOG XRAW=$d using videoconvert
-			    dev[xraw]=$d
-			    enable[transform]=true
-			    break
-            fi
+			( gst-launch-1.0 --gst-debug=v4l2src:5 v4l2src device=$d num-buffers=0 ! fakesink 2>&1 | sed -une '/caps of src/ s/[:;] /\n/gp' ) > /tmp/format.$$
+			if [ ! -z "${gst[encoder_formats]}" ] && grep -E ${gst[encoder_formats]} /tmp/format.$$ > /dev/null ; then
+				LOG XRAW=$d
+				dev[xraw]=$d
+				enable[transform]=false
+				break
+			else
+				LOG DEBUG "gst[encoder_formats]=\"${gst[encoder_formats]}\""
+				cat /tmp/format.$$
+				LOG DEBUG format not matched
+				LOG XRAW=$d using videoconvert
+				dev[xraw]=$d
+				enable[transform]=true
+				break
+			fi
 		else
 			>&2 cat /tmp/video.$$
 			LOG DEBUG skip $d because no enable matches available formats
@@ -456,7 +463,12 @@ elif [ ! -z "${dev[xraw]}" ] ; then
 		gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]}) ! $(transformer ${config[width]} ${config[height]} ${config[fps]} I420) ! ${gst[encoder]}"
 	else
 		sourceinfo="XRAW ${dev[xraw]} ${config[width]} ${config[height]} ${config[fps]}"
-		gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420) ! ${gst[encoder]}"
+		if [[ ${gst[encoder]} =~ .*v4l2h264enc.* ]] ; then
+			# for v4l2h264enc use, do not give I420 format to v4l2src
+			gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[encoder]}"
+		else
+			gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420) ! ${gst[encoder]}"
+		fi
 	fi
 else
 	sourceinfo="TEST ${config[width]} ${config[height]} ${config[fps]}"
