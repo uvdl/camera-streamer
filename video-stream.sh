@@ -342,33 +342,35 @@ fi
 declare -A dev
 for d in /dev/video* ; do
 	if v4l2-ctl -d $d --list-formats > /tmp/video.$$ ; then
+		LOG DEBUG consider $d
+		>&2 cat /tmp/video.$$
 		if grep H264 /tmp/video.$$ > /dev/null && ${enable[h264]} ; then
 			LOG H264=$d
 			dev[h264]=$d
-			break	# prefer H264 over MJPG/YUYV
+			break	# prefer H264 over MJPG/YUY2
 		elif grep MJPG /tmp/video.$$ > /dev/null && ${enable[mjpg]} ; then
 			LOG MJPG=$d
 			dev[mjpg]=$d
-			break   # prefer MJPG over YUYV
-		elif ${enable[xraw]} ; then
+			break   # prefer MJPG over YUY2
+		elif ! ${enable[xraw]} ; then
+			LOG DEBUG skip $d because raw format is not enabled
+		elif [ -z "${gst[encoder_formats]}" ] ; then
+			LOG DEBUG skip $d because no encoder format is given
+		else
 			( gst-launch-1.0 --gst-debug=v4l2src:5 v4l2src device=$d num-buffers=0 ! fakesink 2>&1 | sed -une '/caps of src/ s/[:;] /\n/gp' ) > /tmp/format.$$
-			if [ ! -z "${gst[encoder_formats]}" ] && grep -E ${gst[encoder_formats]} /tmp/format.$$ > /dev/null ; then
+			>&2 cat /tmp/format.$$
+			if grep -E ${gst[encoder_formats]} /tmp/format.$$ > /dev/null ; then
 				LOG XRAW=$d
 				dev[xraw]=$d
 				enable[transform]=false
 				break
-			else
-				LOG DEBUG "gst[encoder_formats]=\"${gst[encoder_formats]}\""
-				cat /tmp/format.$$
-				LOG DEBUG format not matched
+			elif grep -E YUY2 /tmp/format.$$ > /dev/null ; then
 				LOG XRAW=$d using videoconvert
 				dev[xraw]=$d
 				enable[transform]=true
-				break
+				LOG DEBUG continue to consider other devices
+				# keep considering other devices
 			fi
-		else
-			>&2 cat /tmp/video.$$
-			LOG DEBUG skip $d because no enable matches available formats
 		fi
 	fi
 done
