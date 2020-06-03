@@ -86,7 +86,7 @@ done
 # gstreamer pipeline segments
 declare -A gst
 gst[version]=$(gst-launch-1.0 --version | head -1)
-gst[videoscale]=""
+gst[videoscale]="videoscale"
 
 # Define Encoder Pipelines
 declare -A encoder
@@ -303,23 +303,36 @@ for e in $(IFS=',';echo ${config[video_encoders]}) ; do
         break
     fi
 done
-if [ -z "${gst[encoder]}" -o -z "${gst[encoder_formats]}" ] ; then
-    LOG NO Encoder available - pipeline may fail	# NB: encoder is not used for h264 source
+if [ -z "${gst[encoder]}" ] || [ -z "${gst[encoder_formats]}" ] ; then
+    if ${enable[debug]} ; then
+        for k in ${!gst[@]} ; do
+            >&2 echo "gst[$k]=${gst[$k]}"
+        done
+    fi
+    if ${enable[mjpg]} || ${enable[xraw]} ; then
+        if ! ${enable[h264]} ; then
+            LOG NO Encoder available - pipeline cannot be constructed
+            exit 1
+        fi
+    fi
+    # NB: encoder is not used for h264 source
+    LOG NO Encoder available - pipeline may fail
     gst[encoder]="queue"
 fi
 
 # Determine which video scaler we will use
-for e in $(IFS=',';echo ${config[video_scalers]}) ; do
-    LOG TRY $e
-	if gst-inspect-1.0 $e >> $log ; then
-        LOG SELECT $e
-        gst[videoscale]="$e"
-        break
+if ${enable[scale]} || ${enable[transform]} ; then
+    for e in $(IFS=',';echo ${config[video_scalers]}) ; do
+        LOG TRY $e
+	    if gst-inspect-1.0 $e >> $log ; then
+            LOG SELECT $e
+            gst[videoscale]="$e"
+            break
+        fi
+    done
+    if [ "${gst[videoscale]}" == "videoscale" ] ; then
+        LOG HW video scalers not available - using videoscale
     fi
-done
-if [ -z "${gst[videoscale]}" ] ; then
-    LOG HW video scalers not available - using videoscale
-    gst[videoscale]="videoscale"
 fi
 
 # video devices
