@@ -133,7 +133,7 @@ if [ "${PLATFORM}" == "RPIX" ] ; then
 		encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} pass=vbr"
 	fi
 	# https://www.raspberrypi.org/forums/viewtopic.php?t=240170
-	encoder[v4l2h264enc]="v4l2h264enc device=/dev/video11"
+	encoder[v4l2h264enc]="v4l2h264enc"
 	encoder_formats[v4l2h264enc]='I420|YV12|NV12|RGB16|RGB|BGR|BGRA|YUY2|YVYU|UYVY'
 	extra="encode,video_bitrate=$((${config[kbps]} * 1000)),h264_i_frame_period=$((${config[fps]} * 2))"
 	if [ ! -z "${config[h264_profile]}" ] ; then
