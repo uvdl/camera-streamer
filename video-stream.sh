@@ -456,7 +456,7 @@ elif [ ! -z "${dev[xraw]}" ] ; then
 		gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]}) ! $(transformer ${config[width]} ${config[height]} ${config[fps]} I420) ! ${gst[encoder]}"
 	else
 		sourceinfo="XRAW ${dev[xraw]} ${config[width]} ${config[height]} ${config[fps]}"
-		gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420) ! $encoder"
+		gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420) ! ${gst[encoder]}"
 	fi
 else
 	sourceinfo="TEST ${config[width]} ${config[height]} ${config[fps]}"
