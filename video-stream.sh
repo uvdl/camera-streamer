@@ -13,11 +13,12 @@
 #     h264 - prefer H.264 source from camera
 #     mjpg - fallback to Motion JPEG
 #     preview - render outgoing stream on local framebuffer
-#     rtmp - enable rtmp output to the internet
+#     rtmp - enable rtmp output (to the WAN)
 #     scale - allow (up) scaling to reduce data rate from camera to encoder
 #     single - allow either rtmp or udp not both
-#     speedtest - test and document upstream internet bandwidth before starting stream
+#     speedtest - test and document upstream WAN bandwidth before starting stream (depends on wan enable)
 #     udp - enable UDP output to LAN
+#     wan - enable operations on wide-area-networks (internet)
 #     xraw - fallback to RAW video (NB: may be bandwidth limited if using USB)
 #
 # TODO: https://github.com/Freescale/gstreamer-imx/issues/206
@@ -76,7 +77,7 @@ else
 fi
 
 # defaults and flags
-_FLG="audio,debug,h264,mjpg,preview,rtmp,scale,single,speedtest,udp,xraw"
+_FLG="audio,debug,h264,mjpg,preview,rtmp,scale,single,speedtest,udp,wan,xraw"
 declare -A enable
 for k in $(IFS=',';echo $_FLG) ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
@@ -94,7 +95,6 @@ if [ -z "${config[video_scalers]}" ] ; then
 	config[video_scalers]="imxipuvideotransform"
 fi
 if [ -z "${config[video_encoders]}" ] ; then
-	#config[video_encoders]="imxvpuenc_h264,omxh264enc,avenc_h264_omx,x264enc"
 	config[video_encoders]="imxvpuenc_h264,omxh264enc,x264enc"
 fi
 if [ -z "${config[audio_encoders]}" ] ; then
@@ -105,15 +105,7 @@ fi
 # i.MX6
 encoder[imxvpuenc_h264]="imxvpuenc_h264 bitrate=${config[kbps]} idr-interval=$((${config[fps]} * 2))"
 encoder_formats[imxvpuenc_h264]='I420|NV12|GRAY8'
-# Ubuntu, RPi
-encoder[avenc_h264_omx]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) threads=auto keyint-min=$((${config[fps]} * 2))"
-encoder_formats[avenc_h264_omx]='I420'
-# RPi
-# encoder[omxh264enc]="omxh264enc target-bitrate=$((${config[kbps]} * 1000)) periodicity-idr=$((${config[fps]} * 3))"
-# encoder_formats[omxh264enc]='I420'
-# NVidia
-encoder[omxh264enc]="omxh264enc bitrate=$((${config[kbps]} * 1000)) iframeinterval=$((${config[fps]} * 3))"
-encoder_formats[omxh264enc]='I420|NV12'
+# RPi, NVidia handled below
 # Software encoders (most every system)
 encoder[x264enc]="x264enc bitrate=${config[kbps]} speed-preset=veryfast key-int-max=$((${config[fps]} * 2))"
 encoder_formats[x264enc]='I420|YV12|Y42B|Y444|NV12'
@@ -127,15 +119,41 @@ encoder_formats[voaacenc]='S16LE'
 if [ -z "${config[video_latency]}" -o ${config[video_latency]} -lt 1 ] ; then
 	encoder[x264enc]="${encoder[x264enc]} tune=zerolatency sliced-threads=true"
 fi
-if [ ! -z "${config[h264_profile]}" ] ; then
-	encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} profile=${config[h264_profile]}"
-fi
-if [ "${config[h264_rate]}" == "constant" ] ; then
-	encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} pass=cbr"
-	encoder[omxh264enc]="${encoder[omxh264enc]} control-rate=constant"
-elif [ "${config[h264_rate]}" == "variable" ] ; then
-	encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} pass=vbr"
-	encoder[omxh264enc]="${encoder[omxh264enc]} control-rate=variable-skip-frames"
+# RPi variations are *so* different from Ubuntu/NVidia
+if [ "${PLATFORM}" == "RPIX" ] ; then
+	# NB: https://www.phoronix.com/forums/forum/software/desktop-linux/864973-libav-adds-h-264-mpeg4-encoders-using-openmax-il?p=865870#post865870
+	encoder[avenc_h264_omx]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) threads=auto keyint-min=$((${config[fps]} * 2))"
+	encoder_formats[avenc_h264_omx]='I420'
+	if [ ! -z "${config[h264_profile]}" ] ; then
+		encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} profile=${config[h264_profile]}"
+	fi
+	if [ "${config[h264_rate]}" == "constant" ] ; then
+		encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} pass=cbr"
+	elif [ "${config[h264_rate]}" == "variable" ] ; then
+		encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} pass=vbr"
+	fi
+	# https://www.raspberrypi.org/forums/viewtopic.php?t=240170
+	encoder[v4l2h264enc]="v4l2h264enc device=/dev/video11"
+	encoder_formats[v4l2h264enc]='I420|YV12|NV12|RGB16|RGB|BGR|BGRA|YUY2|YVYU|UYVY'
+	extra="encode,video_bitrate=$((${config[kbps]} * 1000)),h264_i_frame_period=$((${config[fps]} * 2))"
+	if [ ! -z "${config[h264_profile]}" ] ; then
+		extra="${extra},h264_profile=${config[h264_profile]}"
+	fi
+	if [ "${config[h264_rate]}" == "constant" ] ; then
+		extra="${extra},video_bitrate_mode=1"
+	elif [ "${config[h264_rate]}" == "variable" ] ; then
+		extra="${extra},video_bitrate_mode=0"
+	fi
+	encoder[v4l2h264enc]="${encoder[v4l2h264enc]} extra-controls=\"${extra}\""
+# NVidia variations are different from Ubuntu
+elif [ "${PLATFORM}" == "NVID" ] ; then
+	encoder[omxh264enc]="omxh264enc bitrate=$((${config[kbps]} * 1000)) iframeinterval=$((${config[fps]} * 2))"
+	encoder_formats[omxh264enc]='I420|NV12'
+	if [ "${config[h264_rate]}" == "constant" ] ; then
+		encoder[omxh264enc]="${encoder[omxh264enc]} control-rate=constant"
+	elif [ "${config[h264_rate]}" == "variable" ] ; then
+		encoder[omxh264enc]="${encoder[omxh264enc]} control-rate=variable-skip-frames"
+	fi
 fi
 
 # logging to file and stdout (which is journaled under systemd)
@@ -256,12 +274,14 @@ fi
 # UDP to IP:PORT (separate video and audio ports)
 
 # Sync with server
-if ${enable[rtmp]} ; then	# TODO: separate internet from rtmp
+if ${enable[wan]} ; then
 	response=false
+	internet=/usr/local/bin/internet.py
+	if [ ! -e $internet ] ; then internet=./internet.py ; fi
 	if [ -z "${SERVER}" ] ; then _ARG="" && SERVER="internet" ; else _ARG="socket ${SERVER}" ; fi
-	LOG SYNC with ${SERVER}
+	LOG SYNC with ${SERVER} using $internet
 	while true ; do
-		if x=$(python /usr/local/bin/internet.py ${_ARG}) ; then response=true ; break ; fi
+		if x=$(python $internet ${_ARG}) ; then response=true ; break ; fi
 		sleep 5
 	done
 	if ! $response ; then
@@ -314,16 +334,18 @@ for d in /dev/video* ; do
 			LOG MJPG=$d
 			dev[mjpg]=$d
 			break   # prefer MJPG over YUYV
-		elif grep -E ${gst[encoder_formats]} /tmp/video.$$ > /dev/null && ${enable[xraw]} ; then
-			LOG XRAW=$d
-			dev[xraw]=$d
-			enable[transform]=false
-			break
 		elif ${enable[xraw]} ; then
-			LOG XRAW=$d using videoconvert
-			dev[xraw]=$d
-			enable[transform]=true
-			break
+            if [ ! -z "${gst[encoder_formats]}" ] && grep -E ${gst[encoder_formats]} /tmp/video.$$ > /dev/null ; then
+			    LOG XRAW=$d
+			    dev[xraw]=$d
+			    enable[transform]=false
+			    break
+		    else
+			    LOG XRAW=$d using videoconvert
+			    dev[xraw]=$d
+			    enable[transform]=true
+			    break
+            fi
 		else
 			>&2 cat /tmp/video.$$
 			LOG DEBUG skip $d because no enable matches available formats
@@ -429,7 +451,7 @@ else
 fi
 
 # perform a speedtest before launching the pipeline if so configured
-if ${enable[speedtest]} ; then
+if ${enable[wan]} && ${enable[speedtest]} ; then
 	LOG DEBUG speedtest...
 	x=$(/usr/local/bin/speedtest-cli --no-download --single --json)
 	echo $x | python -c "import json,sys ; x=json.load(sys.stdin) ; print(json.dumps(x,indent=2))" >> $log
@@ -442,7 +464,7 @@ if ${enable[speedtest]} ; then
 	fi
 	LOG INFO $message
 else
-	message="Upload speedtest not selected"
+	message="Upload speedtest/wan not selected"
 fi
 
 # 2nd Sink for diagnostics/file recording
