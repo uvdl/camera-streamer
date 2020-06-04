@@ -13,6 +13,7 @@
 #     h264 - prefer H.264 source from camera
 #     mjpg - fallback to Motion JPEG
 #     preview - render outgoing stream on local framebuffer
+#     progressreport - inject a progress report on the preview stream
 #     rtmp - enable rtmp output (to the WAN)
 #     scale - allow (up) scaling to reduce data rate from camera to encoder
 #     single - allow either rtmp or udp not both
@@ -82,7 +83,7 @@ else
 fi
 
 # defaults and flags
-_FLG="audio,debug,h264,mjpg,preview,rtmp,scale,single,speedtest,udp,wan,xraw"
+_FLG="audio,debug,h264,mjpg,preview,progressreport,rtmp,scale,single,speedtest,udp,wan,xraw"
 declare -A enable
 for k in $(IFS=',';echo $_FLG) ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
@@ -531,8 +532,10 @@ fi
 
 # 2nd Sink for diagnostics/file recording
 if ${enable[preview]} ; then
-	gst[filesink]="$(timequeue $qmst leaky=downstream) ! $(overlay ${config[width]} ${config[height]} ${config[fps]} message $message) ! progressreport ! fpsdisplaysink sync=false video-sink=autovideosink"
-else
+	gst[filesink]="$(timequeue $qmst leaky=downstream) ! $(overlay ${config[width]} ${config[height]} ${config[fps]} message $message)"
+	if ${enable[progressreport]} ; then gst[filesink]="${gst[filesink]} ! progressreport" ; fi
+	gst[filesink]="${gst[filesink]} ! fpsdisplaysink sync=false video-sink=autovideosink"
+elif ${enable[progressreport]} ; then
 	gst[filesink]="$(timequeue $qmst leaky=downstream) ! progressreport ! fakesink"
 fi
 
