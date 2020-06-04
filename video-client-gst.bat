@@ -14,7 +14,7 @@ set "AUDIO_CAPS=application/x-rtp"
 set "VIDEO_CAPS=application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264,payload=(int)96"
 @rem Audio buffer is based on the AAC encoder channels: 1208=1 channel, 1210=2 channel
 @rem https://stackoverflow.com/questions/7760545/escape-double-quotes-in-parameter
-set "AUDIO_DEPAY=rtpmp4adepay ! ^"audio/mpeg,codec_data=(buffer)1208^" ! queue"
+set "AUDIO_DEPAY=rtpmp4adepay ! ^"audio/mpeg,codec_data=1208^" ! queue"
 set "VIDEO_DEPAY=rtph264depay ! h264parse ! queue"
 
 
@@ -77,24 +77,24 @@ set MCAST_IFACE=%DEFAULT_MCAST_IFACE%
 @rem launch different spells depending on the balance of video/audio port
 @if /I "%VIDEO_PORT%" EQU "0" (
     @if /I "%AUDIO_PORT%" EQU "0" (
-        @rem run test pattern generation to test installation
+        echo "Test Pattern"
         @echo gst-launch-1.0 videotestsrc is-live=true ! "video/x-raw,format=(string)I420,width=(int)640,height=(int)360,framerate=30/1" ! videoconvert ! autovideosink
         gst-launch-1.0 videotestsrc is-live=true ! "video/x-raw,format=(string)I420,width=(int)640,height=(int)360,framerate=30/1" ! videoconvert ! autovideosink
     ) else (
-        @rem audio only
+        echo "Audio Only"
         @echo gst-launch-1.0 %UDPSRC%%AUDIO_PORT% caps="%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
         gst-launch-1.0 %UDPSRC%%AUDIO_PORT% caps="%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
     )
 ) else if /I "%AUDIO_PORT%" EQU "0" (
-    @rem video only
+    echo "Video Only"
     @echo gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%" ! %VIDEO_DEPAY% ! decodebin ! progressreport ! autovideosink
     gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%" ! %VIDEO_DEPAY% ! decodebin ! progressreport ! autovideosink
 ) else if /I "%VIDEO_PORT%" EQU "%AUDIO_PORT%" (
-    @rem video+audio using same port (flvmux)
+    echo "Video+Audio using same port (flvmux)"
     @echo gst-launch-1.0 %UDPSRC%%VIDEO_PORT% ! queue ! flvdemux name=mux mux.video ! "%VIDEO_CAPS%" ! %VIDEO_DEPAY% ! decodebin ! autovideosink mux.audio ! "%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
     gst-launch-1.0 %UDPSRC%%VIDEO_PORT% ! queue ! flvdemux name=mux mux.video ! "%VIDEO_CAPS%" ! %VIDEO_DEPAY% ! decodebin ! autovideosink mux.audio ! "%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
 ) else (
-    @rem video+audio using separate ports no mux
+    echo "Video+Audio using separate ports no mux"
     @echo gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%" ! %VIDEO_DEPAY% ! decodebin ! autovideosink udpsrc %UDPSRC%%AUDIO_PORT% caps="%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
     gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%" ! %VIDEO_DEPAY% ! decodebin ! autovideosink udpsrc %UDPSRC%%AUDIO_PORT% caps="%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
 )
