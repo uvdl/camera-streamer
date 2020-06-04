@@ -543,10 +543,17 @@ fi
 # http://gstreamer-devel.966125.n4.nabble.com/Does-Gstreamer-has-a-element-that-can-split-one-stream-into-two-td966351.html
 # https://serverfault.com/a/975753
 # https://stackoverflow.com/questions/59085054/gstreamer-issue-with-adding-timeoverlay-on-rtmp-stream
-echo "gst-launch-1.0 ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}" > ${LOGDIR}/gst.cmd.$$
-LOG BEGIN $sourceinfo ${config[kbps]} kbps ${LOGDIR}/gst.cmd.$$
-cat ${LOGDIR}/gst.cmd.$$
+if ${enable[debug]} ; then gst[command]="" ; else gst[command]="gst-launch-1.0" ; fi
+if [ -z "${gst[filesink]}" ] ; then
+	gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[avsink]} ${gst[audiopipeline]}"
+else
+	gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}"
+fi
+# NB: this is the only place where stdout is written to, so that the output of this script is a gstreamer pipeline
+echo "${gst[command]}"
 if ${enable[debug]} ; then exit 0 ; fi
+echo "${gst[command]}"  > ${LOGDIR}/gst.cmd.$$
+LOG BEGIN $sourceinfo ${config[kbps]} kbps ${LOGDIR}/gst.cmd.$$
 if ! source ${LOGDIR}/gst.cmd.$$ ; then
 	exit 1
 fi
