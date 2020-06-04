@@ -13,16 +13,19 @@
 #     h264 - prefer H.264 source from camera
 #     mjpg - fallback to Motion JPEG
 #     preview - render outgoing stream on local framebuffer
-#     rtmp - enable rtmp output to the internet
+#     rtmp - enable rtmp output (to the WAN)
 #     scale - allow (up) scaling to reduce data rate from camera to encoder
 #     single - allow either rtmp or udp not both
-#     speedtest - test and document upstream internet bandwidth before starting stream
+#     speedtest - test and document upstream WAN bandwidth before starting stream (depends on wan enable)
 #     udp - enable UDP output to LAN
+#     wan - enable operations on wide-area-networks (internet)
 #     xraw - fallback to RAW video (NB: may be bandwidth limited if using USB)
 #
 # TODO: https://github.com/Freescale/gstreamer-imx/issues/206
-logdir=/tmp
-if [ ! -d $logdir ] ; then logdir=/tmp ; fi ; log=$logdir/video.log
+## NB: RUNTIME_DIRECTORY does not seem to be populated as the systemd docs say...
+##if [ -z "$RUNTIME_DIRECTORY" ] ; then logdir=/tmp ; else logdir=$RUNTIME_DIRECTORY ; fi
+if [ -d /var/run/video-stream ] ; then logdir=/var/run/video-stream ; else logdir=/tmp ; fi
+log=$logdir/video.log
 # configuration items (defaults)
 declare -A config
 config[width]=${WIDTH} ; if [ -z "${config[width]}" ] ; then config[width]=1280 ; fi
@@ -74,7 +77,7 @@ else
 fi
 
 # defaults and flags
-_FLG="audio,debug,h264,mjpg,preview,rtmp,scale,single,speedtest,udp,xraw"
+_FLG="audio,debug,h264,mjpg,preview,rtmp,scale,single,speedtest,udp,wan,xraw"
 declare -A enable
 for k in $(IFS=',';echo $_FLG) ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
@@ -83,7 +86,7 @@ done
 # gstreamer pipeline segments
 declare -A gst
 gst[version]=$(gst-launch-1.0 --version | head -1)
-gst[videoscale]=""
+gst[videoscale]="videoscale"
 
 # Define Encoder Pipelines
 declare -A encoder
@@ -92,7 +95,6 @@ if [ -z "${config[video_scalers]}" ] ; then
 	config[video_scalers]="imxipuvideotransform"
 fi
 if [ -z "${config[video_encoders]}" ] ; then
-	#config[video_encoders]="imxvpuenc_h264,omxh264enc,avenc_h264_omx,x264enc"
 	config[video_encoders]="imxvpuenc_h264,omxh264enc,x264enc"
 fi
 if [ -z "${config[audio_encoders]}" ] ; then
@@ -103,15 +105,7 @@ fi
 # i.MX6
 encoder[imxvpuenc_h264]="imxvpuenc_h264 bitrate=${config[kbps]} idr-interval=$((${config[fps]} * 2))"
 encoder_formats[imxvpuenc_h264]='I420|NV12|GRAY8'
-# Ubuntu, RPi
-encoder[avenc_h264_omx]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) threads=auto keyint-min=$((${config[fps]} * 2))"
-encoder_formats[avenc_h264_omx]='I420'
-# RPi
-# encoder[omxh264enc]="omxh264enc target-bitrate=$((${config[kbps]} * 1000)) periodicity-idr=$((${config[fps]} * 3))"
-# encoder_formats[omxh264enc]='I420'
-# NVidia
-encoder[omxh264enc]="omxh264enc bitrate=$((${config[kbps]} * 1000)) iframeinterval=$((${config[fps]} * 3))"
-encoder_formats[omxh264enc]='I420|NV12'
+# RPi, NVidia handled below
 # Software encoders (most every system)
 encoder[x264enc]="x264enc bitrate=${config[kbps]} speed-preset=veryfast key-int-max=$((${config[fps]} * 2))"
 encoder_formats[x264enc]='I420|YV12|Y42B|Y444|NV12'
@@ -125,15 +119,41 @@ encoder_formats[voaacenc]='S16LE'
 if [ -z "${config[video_latency]}" -o ${config[video_latency]} -lt 1 ] ; then
 	encoder[x264enc]="${encoder[x264enc]} tune=zerolatency sliced-threads=true"
 fi
-if [ ! -z "${config[h264_profile]}" ] ; then
-	encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} profile=${config[h264_profile]}"
-fi
-if [ "${config[h264_rate]}" == "constant" ] ; then
-	encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} pass=cbr"
-	encoder[omxh264enc]="${encoder[omxh264enc]} control-rate=constant"
-elif [ "${config[h264_rate]}" == "variable" ] ; then
-	encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} pass=vbr"
-	encoder[omxh264enc]="${encoder[omxh264enc]} control-rate=variable-skip-frames"
+# RPi variations are *so* different from Ubuntu/NVidia
+if [ "${PLATFORM}" == "RPIX" ] ; then
+	# NB: https://www.phoronix.com/forums/forum/software/desktop-linux/864973-libav-adds-h-264-mpeg4-encoders-using-openmax-il?p=865870#post865870
+	encoder[avenc_h264_omx]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) threads=auto keyint-min=$((${config[fps]} * 2))"
+	encoder_formats[avenc_h264_omx]='I420'
+	if [ ! -z "${config[h264_profile]}" ] ; then
+		encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} profile=${config[h264_profile]}"
+	fi
+	if [ "${config[h264_rate]}" == "constant" ] ; then
+		encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} pass=cbr"
+	elif [ "${config[h264_rate]}" == "variable" ] ; then
+		encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} pass=vbr"
+	fi
+	# https://www.raspberrypi.org/forums/viewtopic.php?t=240170
+	encoder[v4l2h264enc]="v4l2h264enc"
+	encoder_formats[v4l2h264enc]='I420|YV12|NV12|RGB16|RGB|BGR|BGRA|YUY2|YVYU|UYVY'
+	extra="encode,video_bitrate=$((${config[kbps]} * 1000)),h264_i_frame_period=$((${config[fps]} * 2))"
+	if [ ! -z "${config[h264_profile]}" ] ; then
+		extra="${extra},h264_profile=${config[h264_profile]}"
+	fi
+	if [ "${config[h264_rate]}" == "constant" ] ; then
+		extra="${extra},video_bitrate_mode=1"
+	elif [ "${config[h264_rate]}" == "variable" ] ; then
+		extra="${extra},video_bitrate_mode=0"
+	fi
+	encoder[v4l2h264enc]="${encoder[v4l2h264enc]} extra-controls=\"${extra}\""
+# NVidia variations are different from Ubuntu
+elif [ "${PLATFORM}" == "NVID" ] ; then
+	encoder[omxh264enc]="omxh264enc bitrate=$((${config[kbps]} * 1000)) iframeinterval=$((${config[fps]} * 2))"
+	encoder_formats[omxh264enc]='I420|NV12'
+	if [ "${config[h264_rate]}" == "constant" ] ; then
+		encoder[omxh264enc]="${encoder[omxh264enc]} control-rate=constant"
+	elif [ "${config[h264_rate]}" == "variable" ] ; then
+		encoder[omxh264enc]="${encoder[omxh264enc]} control-rate=variable-skip-frames"
+	fi
 fi
 
 # logging to file and stdout (which is journaled under systemd)
@@ -242,7 +262,7 @@ if ${enable[rtmp]} ; then
 	if [ -z "${USERNAME}" -o -z "${KEY}" ] ; then
 		gst[avsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]} live=1 flashver=FME/3.0%20(compatible;%20FMSc%201.0)\""
 	else
-		gst[avsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]}?username=${USERNAME}\&password=${KEY}\""
+		gst[avsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]}?username=${USERNAME}&password=${KEY}\""
 	fi
 elif ${enable[udp]} ; then
 	gst[avsink]="$(rtpmux) ! udpsink ${udp[props]}"
@@ -254,12 +274,14 @@ fi
 # UDP to IP:PORT (separate video and audio ports)
 
 # Sync with server
-if ${enable[rtmp]} ; then	# TODO: separate internet from rtmp
+if ${enable[wan]} ; then
 	response=false
+	internet=/usr/local/bin/internet.py
+	if [ ! -e $internet ] ; then internet=./internet.py ; fi
 	if [ -z "${SERVER}" ] ; then _ARG="" && SERVER="internet" ; else _ARG="socket ${SERVER}" ; fi
-	LOG SYNC with ${SERVER}
+	LOG SYNC with ${SERVER} using $internet
 	while true ; do
-		if x=$(python /usr/local/bin/internet.py ${_ARG}) ; then response=true ; break ; fi
+		if x=$(python $internet ${_ARG}) ; then response=true ; break ; fi
 		sleep 5
 	done
 	if ! $response ; then
@@ -281,47 +303,69 @@ for e in $(IFS=',';echo ${config[video_encoders]}) ; do
         break
     fi
 done
-if [ -z "${gst[encoder]}" -o -z "${gst[encoder_formats]}" ] ; then
-    LOG NO Encoder available - pipeline may fail	# NB: encoder is not used for h264 source
+if [ -z "${gst[encoder]}" ] || [ -z "${gst[encoder_formats]}" ] ; then
+    if ${enable[debug]} ; then
+        for k in ${!encoder[@]} ; do
+            >&2 echo "encoder[$k]=${encoder[$k]}"
+        done
+        for k in ${!gst[@]} ; do
+            >&2 echo "gst[$k]=${gst[$k]}"
+        done
+    fi
+    if ${enable[mjpg]} || ${enable[xraw]} ; then
+        if ! ${enable[h264]} ; then
+            LOG NO Encoder available - pipeline cannot be constructed
+            exit 1
+        fi
+    fi
+    # NB: encoder is not used for h264 source
+    LOG NO Encoder available - pipeline may fail
     gst[encoder]="queue"
 fi
 
 # Determine which video scaler we will use
-for e in $(IFS=',';echo ${config[video_scalers]}) ; do
-    LOG TRY $e
-	if gst-inspect-1.0 $e >> $log ; then
-        LOG SELECT $e
-        gst[videoscale]="$e"
-        break
+if ${enable[scale]} || ${enable[transform]} ; then
+    for e in $(IFS=',';echo ${config[video_scalers]}) ; do
+        LOG TRY $e
+	    if gst-inspect-1.0 $e >> $log ; then
+            LOG SELECT $e
+            gst[videoscale]="$e"
+            break
+        fi
+    done
+    if [ "${gst[videoscale]}" == "videoscale" ] ; then
+        LOG HW video scalers not available - using videoscale
     fi
-done
-if [ -z "${gst[videoscale]}" ] ; then
-    LOG HW video scalers not available - using videoscale
-    gst[videoscale]="videoscale"
 fi
 
 # video devices
 declare -A dev
 for d in /dev/video* ; do
 	if v4l2-ctl -d $d --list-formats > /tmp/video.$$ ; then
-		if grep H264 /tmp/video.$$ && ${enable[h264]} ; then
+		if grep H264 /tmp/video.$$ > /dev/null && ${enable[h264]} ; then
 			LOG H264=$d
 			dev[h264]=$d
 			break	# prefer H264 over MJPG/YUYV
-		elif grep MJPG /tmp/video.$$ && ${enable[mjpg]} ; then
+		elif grep MJPG /tmp/video.$$ > /dev/null && ${enable[mjpg]} ; then
 			LOG MJPG=$d
 			dev[mjpg]=$d
 			break   # prefer MJPG over YUYV
-		elif grep -E ${gst[encoder_formats]} /tmp/video.$$ && ${enable[xraw]} ; then
-			LOG XRAW=$d
-			dev[xraw]=$d
-			enable[transform]=false
-			break
 		elif ${enable[xraw]} ; then
-			LOG XRAW=$d using videoconvert
-			dev[xraw]=$d
-			enable[transform]=true
-			break
+			( gst-launch-1.0 --gst-debug=v4l2src:5 v4l2src device=$d num-buffers=0 ! fakesink 2>&1 | sed -une '/caps of src/ s/[:;] /\n/gp' ) > /tmp/format.$$
+			if [ ! -z "${gst[encoder_formats]}" ] && grep -E ${gst[encoder_formats]} /tmp/format.$$ > /dev/null ; then
+				LOG XRAW=$d
+				dev[xraw]=$d
+				enable[transform]=false
+				break
+			else
+				LOG DEBUG "gst[encoder_formats]=\"${gst[encoder_formats]}\""
+				cat /tmp/format.$$
+				LOG DEBUG format not matched
+				LOG XRAW=$d using videoconvert
+				dev[xraw]=$d
+				enable[transform]=true
+				break
+			fi
 		else
 			>&2 cat /tmp/video.$$
 			LOG DEBUG skip $d because no enable matches available formats
@@ -343,7 +387,7 @@ if ${enable[audio]} ; then
 		d=$(echo $p | cut -f2 -d, | cut -f1 -d: | cut -f3 -d' ')
 		LOG TRY "hw:${c},${d}"
 		gst-launch-1.0 -v alsasrc device="hw:${c},${d}" num-buffers=0 ! fakesink 2>&1 | sed -une '/src: caps/ s/[:;] /\n/gp' > /tmp/audio.$$
-		if grep S16LE /tmp/audio.$$ && ${enable[audio]} ; then
+		if grep S16LE /tmp/audio.$$ > /dev/null && ${enable[audio]} ; then
 			echo "hw:${c},${d}" > $logdir/gst.audio.dev.$$
 		fi
 	done
@@ -419,7 +463,12 @@ elif [ ! -z "${dev[xraw]}" ] ; then
 		gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]}) ! $(transformer ${config[width]} ${config[height]} ${config[fps]} I420) ! ${gst[encoder]}"
 	else
 		sourceinfo="XRAW ${dev[xraw]} ${config[width]} ${config[height]} ${config[fps]}"
-		gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420) ! $encoder"
+		if [[ ${gst[encoder]} =~ .*v4l2h264enc.* ]] ; then
+			# for v4l2h264enc use, do not give I420 format to v4l2src
+			gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[encoder]}"
+		else
+			gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420) ! ${gst[encoder]}"
+		fi
 	fi
 else
 	sourceinfo="TEST ${config[width]} ${config[height]} ${config[fps]}"
@@ -427,7 +476,7 @@ else
 fi
 
 # perform a speedtest before launching the pipeline if so configured
-if ${enable[speedtest]} ; then
+if ${enable[wan]} && ${enable[speedtest]} ; then
 	LOG DEBUG speedtest...
 	x=$(/usr/local/bin/speedtest-cli --no-download --single --json)
 	echo $x | python -c "import json,sys ; x=json.load(sys.stdin) ; print(json.dumps(x,indent=2))" >> $log
@@ -440,7 +489,7 @@ if ${enable[speedtest]} ; then
 	fi
 	LOG INFO $message
 else
-	message="Upload speedtest not selected"
+	message="Upload speedtest/wan not selected"
 fi
 
 # 2nd Sink for diagnostics/file recording
