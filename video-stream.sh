@@ -344,21 +344,20 @@ if ${enable[scale]} || ${enable[transform]} ; then
 fi
 
 # video devices
-declare -A dev
-
+# BEWARE: this is running in a separate shell, changes to the parent environment do not persist
 function select_video_device {
 	local d=$1
+	local height
+	local result=""
 	if v4l2-ctl -d $d --list-formats > /tmp/video.$$ ; then
 		LOG DEBUG consider $d
 		>&2 cat /tmp/video.$$ >> $log
 		if grep H264 /tmp/video.$$ > /dev/null && ${enable[h264]} ; then
 			LOG H264=$d
-			dev[h264]=$d
-			break	# prefer H264 over MJPG/YUY2
+			result="h264 $d false stop"
 		elif grep MJPG /tmp/video.$$ > /dev/null && ${enable[mjpg]} ; then
 			LOG MJPG=$d
-			dev[mjpg]=$d
-			break   # prefer MJPG over YUY2
+			result="mjpg $d false stop"
 		elif ! ${enable[xraw]} ; then
 			LOG DEBUG skip $d because raw format is not enabled
 		elif [ -z "${gst[encoder_formats]}" ] ; then
@@ -370,30 +369,45 @@ function select_video_device {
 			>&2 cat /tmp/format.$$ >> $log
 			if grep -E ${gst[encoder_formats]} /tmp/format.$$ | grep -E $height > /dev/null ; then
 				LOG XRAW=$d
-				dev[xraw]=$d
-				enable[transform]=false
-				LOG DEBUG continue to consider other devices
-				# keep considering other devices
+				result="xraw $d false"
 			elif grep -E YUY2 /tmp/format.$$ | grep -E $height > /dev/null ; then
 				LOG XRAW=$d using videoconvert
-				dev[xraw]=$d
-				enable[transform]=true
-				LOG DEBUG continue to consider other devices
-				# keep considering other devices
+				result="xraw $d true"
 			else
 				LOG DEBUG skip $d because no mode with image height of $height exists
 			fi
 		fi
 	fi
+	echo $result
 }
 
+declare -A dev
 if [ -z "${config[video_device]}" ] ; then
 	for d in /dev/video* ; do
-		$(select_video_device $d)
+		kdts=$(select_video_device $d)
+		if [ -z "$kdts" ] ; then continue ; fi
+		k="$(echo $kdts | cut -f1 -d' ')"
+		d="$(echo $kdts | cut -f2 -d' ')"
+		t="$(echo $kdts | cut -f3 -d' ')"
+		s="$(echo $kdts | cut -f4 -d' ')"
+		dev[$k]=$d
+		enable[transform]=$t
+		if [ "$s" == "stop" ] ; then break ; fi
+		LOG DEBUG continue to consider other devices
 	done
 else
 	# script desires to use a particular device path
-	$(select_video_device ${config[video_device]})
+	kdts=$(select_video_device ${config[video_device]})
+	if [ -z "$kdts" ] ; then
+		LOG DEBUG ${config[video_device]} not suitable
+		exit 1
+	fi
+	k="$(echo $kdts | cut -f1 -d' ')"
+	d="$(echo $kdts | cut -f2 -d' ')"
+	t="$(echo $kdts | cut -f3 -d' ')"
+	s="$(echo $kdts | cut -f4 -d' ')"
+	dev[$k]=$d
+	enable[transform]=$t
 fi
 
 # audio devices
