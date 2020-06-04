@@ -22,10 +22,14 @@
 #     xraw - fallback to RAW video (NB: may be bandwidth limited if using USB)
 #
 # TODO: https://github.com/Freescale/gstreamer-imx/issues/206
-## NB: RUNTIME_DIRECTORY does not seem to be populated as the systemd docs say...
-##if [ -z "$RUNTIME_DIRECTORY" ] ; then logdir=/tmp ; else logdir=$RUNTIME_DIRECTORY ; fi
-if [ -d /var/run/video-stream ] ; then logdir=/var/run/video-stream ; else logdir=/tmp ; fi
-log=$logdir/video.log
+if [ -z "${LOGDIR}" ] ; then
+	## NB: RUNTIME_DIRECTORY does not seem to be populated as the systemd docs say...
+	##if [ -z "$RUNTIME_DIRECTORY" ] ; then LOGDIR=/tmp ; else LOGDIR=$RUNTIME_DIRECTORY ; fi
+	if [ -d /var/run/video-stream ] ; then LOGDIR=/var/run/video-stream ; else LOGDIR=/tmp/video-stream.$$ ; fi
+else
+	if ! mkdir -p ${LOGDIR} ; then LOGDIR=/tmp/video-stream.$$ ; fi
+fi
+log=${LOGDIR}/video.log
 # configuration items (defaults)
 declare -A config
 config[width]=${WIDTH} ; if [ -z "${config[width]}" ] ; then config[width]=1280 ; fi
@@ -407,10 +411,10 @@ if ${enable[audio]} ; then
 		LOG TRY "hw:${c},${d}"
 		gst-launch-1.0 -v alsasrc device="hw:${c},${d}" num-buffers=0 ! fakesink 2>&1 | sed -une '/src: caps/ s/[:;] /\n/gp' > /tmp/audio.$$
 		if grep S16LE /tmp/audio.$$ > /dev/null && ${enable[audio]} ; then
-			echo "hw:${c},${d}" > $logdir/gst.audio.dev.$$
+			echo "hw:${c},${d}" > ${LOGDIR}/gst.audio.dev.$$
 		fi
 	done
-	if x=$(cat $logdir/gst.audio.dev.$$) ; then
+	if x=$(cat ${LOGDIR}/gst.audio.dev.$$) ; then
 		if [ -z "$x" ] ; then
 			LOG NO audio ${config[audio]} because /tmp/audio.$$ had no suitable capabilities
 		else
@@ -418,7 +422,7 @@ if ${enable[audio]} ; then
 			LOG SELECT "${dev[audio]} for ${config[audio]}"
 		fi
 	else
-		LOG NO audio ${config[audio]} because $logdir/gst.audio.dev.$$ was not read
+		LOG NO audio ${config[audio]} because ${LOGDIR}/gst.audio.dev.$$ was not read
 	fi
 	# Determine which audio encoder we will use
 	for e in $(IFS=',';echo ${config[audio_encoders]}) ; do
@@ -522,10 +526,10 @@ fi
 # http://gstreamer-devel.966125.n4.nabble.com/Does-Gstreamer-has-a-element-that-can-split-one-stream-into-two-td966351.html
 # https://serverfault.com/a/975753
 # https://stackoverflow.com/questions/59085054/gstreamer-issue-with-adding-timeoverlay-on-rtmp-stream
-echo "gst-launch-1.0 ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}" > $logdir/gst.cmd.$$
-LOG BEGIN $sourceinfo ${config[kbps]} kbps $logdir/gst.cmd.$$
-cat $logdir/gst.cmd.$$
+echo "gst-launch-1.0 ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}" > ${LOGDIR}/gst.cmd.$$
+LOG BEGIN $sourceinfo ${config[kbps]} kbps ${LOGDIR}/gst.cmd.$$
+cat ${LOGDIR}/gst.cmd.$$
 if ${enable[debug]} ; then exit 0 ; fi
-if ! source $logdir/gst.cmd.$$ ; then
+if ! source ${LOGDIR}/gst.cmd.$$ ; then
 	exit 1
 fi
