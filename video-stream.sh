@@ -39,6 +39,7 @@ config[video_latency]=${VIDEO_LATENCY_MS}   # override computed latency
 config[audio_encoders]="${AUDIO_ENCODERS}"  # list of audio encoders to use
 config[video_encoders]="${VIDEO_ENCODERS}"  # list of video encoders to use
 config[video_scalers]="${VIDEO_SCALERS}"    # list of video scalers to use
+config[video_device]=${VIDEO_DEVICE}        # video device path to use (empty to autoselect)
 config[h264_profile]=${H264_PROFILE}        # high, main, baseline or empty
 config[h264_rate]=${H264_RATE}              # constant, variable or empty
 # NB: the exact ratio of the max-size-time parameter between the flvmux latency
@@ -340,7 +341,9 @@ fi
 
 # video devices
 declare -A dev
-for d in /dev/video* ; do
+
+function select_video_device {
+	local d=$1
 	if v4l2-ctl -d $d --list-formats > /tmp/video.$$ ; then
 		LOG DEBUG consider $d
 		>&2 cat /tmp/video.$$ >> $log
@@ -378,7 +381,16 @@ for d in /dev/video* ; do
 			fi
 		fi
 	fi
-done
+}
+
+if [ -z "${config[video_device]}" ] ; then
+	for d in /dev/video* ; do
+		$(select_video_device $d)
+	done
+else
+	# script desires to use a particular device path
+	$(select_video_device ${config[video_device]})
+fi
 
 # audio devices
 # NB: buffer management and sync can cause all kinds of problems including the dreaded
