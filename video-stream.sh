@@ -355,10 +355,10 @@ function select_video_device {
 		>&2 cat /tmp/video.$$ >> $log
 		if grep H264 /tmp/video.$$ > /dev/null && ${enable[h264]} ; then
 			LOG H264=$d
-			result="h264 $d false stop"
+			result="h264 $d false ${config[height]} stop"
 		elif grep MJPG /tmp/video.$$ > /dev/null && ${enable[mjpg]} ; then
 			LOG MJPG=$d
-			result="mjpg $d false stop"
+			result="mjpg $d false ${config[height]} stop"
 		elif ! ${enable[xraw]} ; then
 			LOG DEBUG skip $d because raw format is not enabled
 		elif [ -z "${gst[encoder_formats]}" ] ; then
@@ -369,11 +369,22 @@ function select_video_device {
 			( gst-launch-1.0 --gst-debug=v4l2src:5 v4l2src device=$d num-buffers=0 ! fakesink 2>&1 | sed -une '/caps of src/ s/[:;] /\n/gp' ) > /tmp/format.$$
 			>&2 cat /tmp/format.$$ >> $log
 			if grep -E ${gst[encoder_formats]} /tmp/format.$$ | grep -E $height > /dev/null ; then
+				# encoder format matches *and* frame height matches
 				LOG XRAW=$d
-				result="xraw $d false"
+				result="xraw $d false $height"
 			elif grep -E YUY2 /tmp/format.$$ | grep -E $height > /dev/null ; then
+				# encode format can be converted and height matches
 				LOG XRAW=$d using videoconvert
-				result="xraw $d true"
+				result="xraw $d true $height"
+			elif grep -E I420 /tmp/format.$$ > /dev/null ; then
+				# encoder format matches but height does not, pick it out
+				for e in $(IFS=',';grep -E I420 /tmp/format.$$ | head -1) ; do
+					k=$(echo $e | cut -f1 -d=)
+					v=$(echo $e | cut -f2 -d= | cut -f2 -d\) | cut -f1 -d,)
+					if [ "$k" == "height" ] ; then height=$(( ${v} )) ; fi
+				done
+				LOG XRAW=$d using videoscale $height>${config[height]}
+				result="xraw $d true $height"
 			else
 				LOG DEBUG skip $d because no mode with image height of $height exists
 			fi
@@ -390,9 +401,11 @@ if [ -z "${config[video_device]}" ] ; then
 		k="$(echo $kdts | cut -f1 -d' ')"
 		d="$(echo $kdts | cut -f2 -d' ')"
 		t="$(echo $kdts | cut -f3 -d' ')"
-		s="$(echo $kdts | cut -f4 -d' ')"
+		h="$(echo $kdts | cut -f4 -d' ')"
+		s="$(echo $kdts | cut -f5 -d' ')"
 		dev[$k]=$d
 		enable[transform]=$t
+		config[source_height]=$h
 		if [ "$s" == "stop" ] ; then break ; fi
 		LOG DEBUG continue to consider other devices
 	done
@@ -406,9 +419,11 @@ else
 	k="$(echo $kdts | cut -f1 -d' ')"
 	d="$(echo $kdts | cut -f2 -d' ')"
 	t="$(echo $kdts | cut -f3 -d' ')"
-	s="$(echo $kdts | cut -f4 -d' ')"
+	h="$(echo $kdts | cut -f4 -d' ')"
+	s="$(echo $kdts | cut -f5 -d' ')"
 	dev[$k]=$d
 	enable[transform]=$t
+	config[source_height]=$h
 fi
 
 # audio devices
@@ -491,10 +506,10 @@ elif [ ! -z "${dev[mjpg]}" ] ; then
 	gst[sourcepipeline]="$(videosource mjpg ${dev[mjpg]}) ! $(mjpgargs ${config[width]} ${config[height]} ${config[fps]}) ! jpegdec ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420) ! ${gst[encoder]}"
 elif [ ! -z "${dev[xraw]}" ] ; then
 	height=$(( ${config[height]} ))
-	if ${enable[scale]} && [ ${height/.*} -gt 480 ] ; then
-		# for USB2.0, cameras cannot emit 1080p@30fps/720p@30fps so we pull 640x360@30fps and upscale
-		sourceinfo="XRAW ${dev[xraw]} 640>${config[width]} 360>$height $fps"
-		gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs 640 360 ${config[fps]}) ! $(transformer ${config[width]} ${config[height]} ${config[fps]} I420) ! ${gst[encoder]}"
+	if [ -z "${config[source_height]}" ] && [ ${height/.*} -gt 480 ] ; then
+		# for USB2.0, cameras cannot emit 1080p@30fps/720p@30fps so we pull 640x???@30fps and upscale
+		sourceinfo="XRAW ${dev[xraw]} 640>${config[width]} ${config[source_height]}>$height $fps"
+		gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs 640 ${config[source_height]} ${config[fps]}) ! $(transformer ${config[width]} ${config[height]} ${config[fps]} I420) ! ${gst[encoder]}"
 	elif ${enable[transform]} ; then
 		sourceinfo="XRAW ${dev[xraw]} ${config[width]} ${config[height]} ${config[fps]} (transformed)"
 		# NB: videoconvert should negotiate optimally so a camera that can emit I420 will be slightly more efficient
