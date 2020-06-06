@@ -13,6 +13,7 @@
 #     h264 - prefer H.264 source from camera
 #     mjpg - fallback to Motion JPEG
 #     preview - render outgoing stream on local framebuffer
+#     progressreport - inject a progress report on the preview stream
 #     rtmp - enable rtmp output (to the WAN)
 #     scale - allow (up) scaling to reduce data rate from camera to encoder
 #     single - allow either rtmp or udp not both
@@ -22,10 +23,14 @@
 #     xraw - fallback to RAW video (NB: may be bandwidth limited if using USB)
 #
 # TODO: https://github.com/Freescale/gstreamer-imx/issues/206
-## NB: RUNTIME_DIRECTORY does not seem to be populated as the systemd docs say...
-##if [ -z "$RUNTIME_DIRECTORY" ] ; then logdir=/tmp ; else logdir=$RUNTIME_DIRECTORY ; fi
-if [ -d /var/run/video-stream ] ; then logdir=/var/run/video-stream ; else logdir=/tmp ; fi
-log=$logdir/video.log
+if [ -z "${LOGDIR}" ] ; then
+	## NB: RUNTIME_DIRECTORY does not seem to be populated as the systemd docs say...
+	##if [ -z "$RUNTIME_DIRECTORY" ] ; then LOGDIR=/tmp ; else LOGDIR=$RUNTIME_DIRECTORY ; fi
+	if [ -d /var/run/video-stream ] ; then LOGDIR=/var/run/video-stream ; else LOGDIR=/tmp/video-stream.$$ ; fi
+else
+	if ! mkdir -p ${LOGDIR} ; then LOGDIR=/tmp/video-stream.$$ ; fi
+fi
+log=${LOGDIR}/video.log
 # configuration items (defaults)
 declare -A config
 config[width]=${WIDTH} ; if [ -z "${config[width]}" ] ; then config[width]=1280 ; fi
@@ -39,6 +44,7 @@ config[video_latency]=${VIDEO_LATENCY_MS}   # override computed latency
 config[audio_encoders]="${AUDIO_ENCODERS}"  # list of audio encoders to use
 config[video_encoders]="${VIDEO_ENCODERS}"  # list of video encoders to use
 config[video_scalers]="${VIDEO_SCALERS}"    # list of video scalers to use
+config[video_device]=${VIDEO_DEVICE}        # video device path to use (empty to autoselect)
 config[h264_profile]=${H264_PROFILE}        # high, main, baseline or empty
 config[h264_rate]=${H264_RATE}              # constant, variable or empty
 # NB: the exact ratio of the max-size-time parameter between the flvmux latency
@@ -77,7 +83,7 @@ else
 fi
 
 # defaults and flags
-_FLG="audio,debug,h264,mjpg,preview,rtmp,scale,single,speedtest,udp,wan,xraw"
+_FLG="audio,debug,h264,mjpg,preview,progressreport,rtmp,scale,single,speedtest,udp,wan,xraw"
 declare -A enable
 for k in $(IFS=',';echo $_FLG) ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
@@ -339,39 +345,71 @@ if ${enable[scale]} || ${enable[transform]} ; then
 fi
 
 # video devices
-declare -A dev
-for d in /dev/video* ; do
+# BEWARE: this is running in a separate shell, changes to the parent environment do not persist
+function select_video_device {
+	local d=$1
+	local height
+	local result=""
 	if v4l2-ctl -d $d --list-formats > /tmp/video.$$ ; then
+		LOG DEBUG consider $d
+		>&2 cat /tmp/video.$$ >> $log
 		if grep H264 /tmp/video.$$ > /dev/null && ${enable[h264]} ; then
 			LOG H264=$d
-			dev[h264]=$d
-			break	# prefer H264 over MJPG/YUYV
+			result="h264 $d false stop"
 		elif grep MJPG /tmp/video.$$ > /dev/null && ${enable[mjpg]} ; then
 			LOG MJPG=$d
-			dev[mjpg]=$d
-			break   # prefer MJPG over YUYV
-		elif ${enable[xraw]} ; then
-			( gst-launch-1.0 --gst-debug=v4l2src:5 v4l2src device=$d num-buffers=0 ! fakesink 2>&1 | sed -une '/caps of src/ s/[:;] /\n/gp' ) > /tmp/format.$$
-			if [ ! -z "${gst[encoder_formats]}" ] && grep -E ${gst[encoder_formats]} /tmp/format.$$ > /dev/null ; then
-				LOG XRAW=$d
-				dev[xraw]=$d
-				enable[transform]=false
-				break
-			else
-				LOG DEBUG "gst[encoder_formats]=\"${gst[encoder_formats]}\""
-				cat /tmp/format.$$
-				LOG DEBUG format not matched
-				LOG XRAW=$d using videoconvert
-				dev[xraw]=$d
-				enable[transform]=true
-				break
-			fi
+			result="mjpg $d false stop"
+		elif ! ${enable[xraw]} ; then
+			LOG DEBUG skip $d because raw format is not enabled
+		elif [ -z "${gst[encoder_formats]}" ] ; then
+			LOG DEBUG skip $d because no encoder format is given
 		else
-			>&2 cat /tmp/video.$$
-			LOG DEBUG skip $d because no enable matches available formats
+			height=$(( ${config[height]} ))
+			if ${enable[scale]} && [ ${height/.*} -gt 480 ] ; then height=360 ; fi
+			( gst-launch-1.0 --gst-debug=v4l2src:5 v4l2src device=$d num-buffers=0 ! fakesink 2>&1 | sed -une '/caps of src/ s/[:;] /\n/gp' ) > /tmp/format.$$
+			>&2 cat /tmp/format.$$ >> $log
+			if grep -E ${gst[encoder_formats]} /tmp/format.$$ | grep -E $height > /dev/null ; then
+				LOG XRAW=$d
+				result="xraw $d false"
+			elif grep -E YUY2 /tmp/format.$$ | grep -E $height > /dev/null ; then
+				LOG XRAW=$d using videoconvert
+				result="xraw $d true"
+			else
+				LOG DEBUG skip $d because no mode with image height of $height exists
+			fi
 		fi
 	fi
-done
+	echo $result
+}
+
+declare -A dev
+if [ -z "${config[video_device]}" ] ; then
+	for d in /dev/video* ; do
+		kdts=$(select_video_device $d)
+		if [ -z "$kdts" ] ; then continue ; fi
+		k="$(echo $kdts | cut -f1 -d' ')"
+		d="$(echo $kdts | cut -f2 -d' ')"
+		t="$(echo $kdts | cut -f3 -d' ')"
+		s="$(echo $kdts | cut -f4 -d' ')"
+		dev[$k]=$d
+		enable[transform]=$t
+		if [ "$s" == "stop" ] ; then break ; fi
+		LOG DEBUG continue to consider other devices
+	done
+else
+	# script desires to use a particular device path
+	kdts=$(select_video_device ${config[video_device]})
+	if [ -z "$kdts" ] ; then
+		LOG DEBUG ${config[video_device]} not suitable
+		exit 1
+	fi
+	k="$(echo $kdts | cut -f1 -d' ')"
+	d="$(echo $kdts | cut -f2 -d' ')"
+	t="$(echo $kdts | cut -f3 -d' ')"
+	s="$(echo $kdts | cut -f4 -d' ')"
+	dev[$k]=$d
+	enable[transform]=$t
+fi
 
 # audio devices
 # NB: buffer management and sync can cause all kinds of problems including the dreaded
@@ -388,10 +426,10 @@ if ${enable[audio]} ; then
 		LOG TRY "hw:${c},${d}"
 		gst-launch-1.0 -v alsasrc device="hw:${c},${d}" num-buffers=0 ! fakesink 2>&1 | sed -une '/src: caps/ s/[:;] /\n/gp' > /tmp/audio.$$
 		if grep S16LE /tmp/audio.$$ > /dev/null && ${enable[audio]} ; then
-			echo "hw:${c},${d}" > $logdir/gst.audio.dev.$$
+			echo "hw:${c},${d}" > ${LOGDIR}/gst.audio.dev.$$
 		fi
 	done
-	if x=$(cat $logdir/gst.audio.dev.$$) ; then
+	if x=$(cat ${LOGDIR}/gst.audio.dev.$$) ; then
 		if [ -z "$x" ] ; then
 			LOG NO audio ${config[audio]} because /tmp/audio.$$ had no suitable capabilities
 		else
@@ -399,7 +437,7 @@ if ${enable[audio]} ; then
 			LOG SELECT "${dev[audio]} for ${config[audio]}"
 		fi
 	else
-		LOG NO audio ${config[audio]} because $logdir/gst.audio.dev.$$ was not read
+		LOG NO audio ${config[audio]} because ${LOGDIR}/gst.audio.dev.$$ was not read
 	fi
 	# Determine which audio encoder we will use
 	for e in $(IFS=',';echo ${config[audio_encoders]}) ; do
@@ -494,8 +532,10 @@ fi
 
 # 2nd Sink for diagnostics/file recording
 if ${enable[preview]} ; then
-	gst[filesink]="$(timequeue $qmst leaky=downstream) ! $(overlay ${config[width]} ${config[height]} ${config[fps]} message $message) ! progressreport ! fpsdisplaysink sync=false video-sink=autovideosink"
-else
+	gst[filesink]="$(timequeue $qmst leaky=downstream) ! $(overlay ${config[width]} ${config[height]} ${config[fps]} message $message)"
+	if ${enable[progressreport]} ; then gst[filesink]="${gst[filesink]} ! progressreport" ; fi
+	gst[filesink]="${gst[filesink]} ! fpsdisplaysink sync=false video-sink=autovideosink"
+elif ${enable[progressreport]} ; then
 	gst[filesink]="$(timequeue $qmst leaky=downstream) ! progressreport ! fakesink"
 fi
 
@@ -503,10 +543,17 @@ fi
 # http://gstreamer-devel.966125.n4.nabble.com/Does-Gstreamer-has-a-element-that-can-split-one-stream-into-two-td966351.html
 # https://serverfault.com/a/975753
 # https://stackoverflow.com/questions/59085054/gstreamer-issue-with-adding-timeoverlay-on-rtmp-stream
-echo "gst-launch-1.0 ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}" > $logdir/gst.cmd.$$
-LOG BEGIN $sourceinfo ${config[kbps]} kbps $logdir/gst.cmd.$$
-cat $logdir/gst.cmd.$$
+if ${enable[debug]} ; then gst[command]="" ; else gst[command]="gst-launch-1.0" ; fi
+if [ -z "${gst[filesink]}" ] ; then
+	gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[avsink]} ${gst[audiopipeline]}"
+else
+	gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}"
+fi
+# NB: this is the only place where stdout is written to, so that the output of this script is a gstreamer pipeline
+echo "${gst[command]}"
 if ${enable[debug]} ; then exit 0 ; fi
-if ! source $logdir/gst.cmd.$$ ; then
+echo "${gst[command]}"  > ${LOGDIR}/gst.cmd.$$
+LOG BEGIN $sourceinfo ${config[kbps]} kbps ${LOGDIR}/gst.cmd.$$
+if ! source ${LOGDIR}/gst.cmd.$$ ; then
 	exit 1
 fi
