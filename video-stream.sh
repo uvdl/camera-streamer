@@ -17,6 +17,7 @@
 #     rtmp - enable rtmp output (to the WAN)
 #     scale - allow (up) scaling to reduce data rate from camera to encoder
 #     single - allow either rtmp or udp not both
+#     snow - use random data for video when no suitable camera is found
 #     speedtest - test and document upstream WAN bandwidth before starting stream (depends on wan enable)
 #     udp - enable UDP output to LAN
 #     wan - enable operations on wide-area-networks (internet)
@@ -83,7 +84,7 @@ else
 fi
 
 # defaults and flags
-_FLG="audio,debug,h264,mjpg,preview,progressreport,rtmp,scale,single,speedtest,udp,wan,xraw"
+_FLG="audio,debug,h264,mjpg,preview,progressreport,rtmp,scale,single,snow,speedtest,udp,wan,xraw"
 declare -A enable
 for k in $(IFS=',';echo $_FLG) ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
@@ -490,7 +491,10 @@ fi
 # TODO: determine which video source we will use.  Options are v4l2src (default), uvch264src/uvch264mjpgdemux (if installed) and imxv4l2videosrc (imx6)
 function videosource {
 	local result="v4l2src device=$2 io-mode=mmap"
-	if [ "$1" == "test" ] ; then result="videotestsrc is-live=true" ; fi
+	if [ "$1" == "test" ] ; then
+		result="videotestsrc is-live=true"
+		if $enable[snow] ; then result="$result pattern=snow" ; fi
+	fi
 	echo $result
 }
 
@@ -512,14 +516,11 @@ elif [ ! -z "${dev[mjpg]}" ] ; then
 	sourceinfo="MJPG ${dev[mjpg]} ${config[width]} ${config[height]} ${config[fps]}"
 	gst[sourcepipeline]="$(videosource mjpg ${dev[mjpg]}) ! $(mjpgargs ${config[width]} ${config[height]} ${config[fps]}) ! jpegdec ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420) ! ${gst[encoder]}"
 elif [ -z "${config[source_width]}" ] || [ -z "${config[source_height]}" ] ; then
-	if ${enable[test]} ; then
-		LOG NO Source available - test pipeline enabled
-		sourceinfo="TEST ${config[width]} ${config[height]} ${config[fps]}"
-		gst[sourcepipeline]="$(videosource test) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420) ! $(overlay ${config[width]} ${config[height]} ${config[fps]} overlay ${gst[encoder]}) ! ${gst[encoder]}"
-	else
-		LOG NO Source available - pipeline cannot be constructed
-		exit 1
-	fi
+	LOG NO Source available - test pipeline enabled
+	sourceinfo="TEST ${config[width]} ${config[height]} ${config[fps]}"
+	gst[sourcepipeline]="$(videosource test) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420)"
+	if ! ${enable[snow]} ; then gst[sourcepipeline]="${gst[sourcepipeline]} ! $(overlay ${config[width]} ${config[height]} ${config[fps]} overlay ${gst[encoder]})" ; fi
+	gst[sourcepipeline]="${gst[sourcepipeline]} ! ${gst[encoder]}"
 elif [ ! -z "${dev[xraw]}" ] ; then
 	config_width=$(( ${config[width]} ))
 	config_height=$(( ${config[height]} ))
@@ -546,7 +547,9 @@ elif [ ! -z "${dev[xraw]}" ] ; then
 	fi
 else
 	sourceinfo="TEST ${config[width]} ${config[height]} ${config[fps]}"
-	gst[sourcepipeline]="$(videosource test) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420) ! $(overlay ${config[width]} ${config[height]} ${config[fps]} overlay ${gst[encoder]}) ! ${gst[encoder]}"
+	gst[sourcepipeline]="$(videosource test) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420)"
+	if ! ${enable[snow]} ; then gst[sourcepipeline]="${gst[sourcepipeline]} ! $(overlay ${config[width]} ${config[height]} ${config[fps]} overlay ${gst[encoder]})" ; fi
+	gst[sourcepipeline]="${gst[sourcepipeline]} ! ${gst[encoder]}"
 fi
 
 # perform a speedtest before launching the pipeline if so configured
