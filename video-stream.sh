@@ -420,7 +420,8 @@ else
 	kdtwhds=$(select_video_device ${config[video_device]})
 	if [ -z "$kdtwhds" ] ; then
 		LOG DEBUG ${config[video_device]} not suitable
-		exit 1
+		# exit 1
+		kdtwhds="test none false ${config[width]} ${config[height]}"
 	fi
 	k="$(echo $kdtwhds | cut -f1 -d' ')"
 	d="$(echo $kdtwhds | cut -f2 -d' ')"
@@ -493,7 +494,7 @@ function videosource {
 	local result="v4l2src device=$2 io-mode=mmap"
 	if [ "$1" == "test" ] ; then
 		result="videotestsrc is-live=true"
-		if $enable[snow] ; then result="$result pattern=snow" ; fi
+		if ${enable[snow]} ; then result="$result pattern=snow" ; fi
 	fi
 	echo $result
 }
