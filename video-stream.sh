@@ -256,7 +256,7 @@ function overlay {
 	shift 4
 	if [ $height -gt 480 ] ; then pad=35 ; fi
 	if [ $height -gt 720 ] ; then pad=55 ; fi
-	local result="timeoverlay halignment=left valignment=top ypad=$(($pad * 2 + 25)) ! textoverlay halignment=left valignment=top ypad=$(($pad * 1 + 25)) name=$name text=\""$@"\" ! textoverlay halignment=left valignment=top ypad=25 text=\"${gst[version]}, $width x $height @$fps\""
+	local result="timeoverlay halignment=left valignment=top ypad=$(($pad * 2 + 25))"
 	echo $result
 }
 
