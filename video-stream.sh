@@ -84,7 +84,7 @@ else
 fi
 
 # defaults and flags
-_FLG="audio,debug,h264,mjpg,preview,progressreport,rtmp,scale,single,snow,speedtest,udp,wan,xraw"
+_FLG="audio,debug,h264,mjpg,preview,progressreport,rtmp,scale,single,snow,speedtest,udp,wan,xraw,h265"
 declare -A enable
 for k in $(IFS=',';echo $_FLG) ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
@@ -155,7 +155,9 @@ if [ "${PLATFORM}" == "RPIX" ] ; then
 # NVidia variations are different from Ubuntu
 elif [ "${PLATFORM}" == "NVID" ] ; then
 	encoder[omxh264enc]="omxh264enc bitrate=$((${config[kbps]} * 1000)) iframeinterval=$((${config[fps]} * 2))"
+	encoder[omxh265enc]="omxh265enc bitrate=$((${config[kbps]} * 1000)) iframeinterval=$((${config[fps]} * 2))"
 	encoder_formats[omxh264enc]='I420|NV12'
+	encoder_formats[omxh265enc]='I420|NV12'
 	if [ "${config[h264_rate]}" == "constant" ] ; then
 		encoder[omxh264enc]="${encoder[omxh264enc]} control-rate=constant"
 	elif [ "${config[h264_rate]}" == "variable" ] ; then
@@ -220,6 +222,7 @@ function flvmux {
 }
 function rtpmux {
 	local result="$(timequeue $qmst leaky=upstream) ! rtph264pay config-interval=10 pt=96 ! mux.sink_0 rtpmux name=mux"
+	if ${enable[h265]} ; then result="$(timequeue $qmst leaky=upstream) ! rtph265pay config-interval=10 pt=96 ! mux.sink_0 rtpmux name=mux" ; fi
 	echo $result
 }
 function h264args {
@@ -227,6 +230,11 @@ function h264args {
 	if [ ! -z "${config[h264_profile]}" ] ; then result="$result,profile=(string)${config[h264_profile]}" ; fi
 	result="$result ! h264parse"
 	echo $result
+}
+function h265args {
+       local result="\"video/x-h265,stream-format=(string)byte-stream,width=(int)$1,height=(int)$2,framerate=(fraction)$3\""
+       result="$result ! h265parse"
+       echo $result
 }
 function mjpgargs {
 	local result="\"image/jpeg,width=(int)$1,height=(int)$2,framerate=(fraction)$3\""
@@ -585,9 +593,15 @@ fi
 # https://stackoverflow.com/questions/59085054/gstreamer-issue-with-adding-timeoverlay-on-rtmp-stream
 if ${enable[debug]} ; then gst[command]="" ; else gst[command]="gst-launch-1.0" ; fi
 if [ -z "${gst[filesink]}" ] ; then
-	gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[avsink]} ${gst[audiopipeline]}"
+	if ${enable[h265]} ; then
+		gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(h265args ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[avsink]} ${gst[audiopipeline]}" ;
+	else
+		 gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[avsink]} ${gst[audiopipeline]}" ; fi
 else
-	gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}"
+	if ${enable[h265]} ; then
+		gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(h265args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}" ;
+	else
+		gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}" ; fi
 fi
 # NB: this is the only place where stdout is written to, so that the output of this script is a gstreamer pipeline
 echo "${gst[command]}"
