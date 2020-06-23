@@ -154,10 +154,13 @@ if [ "${PLATFORM}" == "RPIX" ] ; then
 	encoder[v4l2h264enc]="${encoder[v4l2h264enc]} extra-controls=\"${extra}\""
 # NVidia variations are different from Ubuntu
 elif [ "${PLATFORM}" == "NVID" ] ; then
-	encoder[omxh264enc]="omxh264enc bitrate=$((${config[kbps]} * 1000)) iframeinterval=$((${config[fps]} * 2))"
-	encoder[omxh265enc]="omxh265enc bitrate=$((${config[kbps]} * 1000)) iframeinterval=$((${config[fps]} * 2))"
-	encoder_formats[omxh264enc]='I420|NV12'
-	encoder_formats[omxh265enc]='I420|NV12'
+	if ${enable[h265]} ; then
+		encoder[omxh265enc]="omxh265enc bitrate=$((${config[kbps]} * 1000)) iframeinterval=$((${config[fps]} * 2))" ;
+		encoder_formats[omxh265enc]='I420|NV12' ;
+	else
+		encoder[omxh264enc]="omxh264enc bitrate=$((${config[kbps]} * 1000)) iframeinterval=$((${config[fps]} * 2))" ; 
+		encoder_formats[omxh264enc]='I420|NV12' ;
+	fi
 	if [ "${config[h264_rate]}" == "constant" ] ; then
 		encoder[omxh264enc]="${encoder[omxh264enc]} control-rate=constant"
 	elif [ "${config[h264_rate]}" == "variable" ] ; then
