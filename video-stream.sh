@@ -236,23 +236,26 @@ function flvmux {
 }
 function rtpmux {
 	local result="$(timequeue $qmst leaky=upstream)"
-	if ${enable[h265]} ; then result="$result ! rtph265pay config-interval=10 pt=96"
-	elif ${enable[h264]} ; then result="$result ! rtph264pay config-interval=10 pt=96"
+	if ${enable[h265]} ; then
+		result="$result ! rtph265pay config-interval=10 pt=96"
+	elif ${enable[h264]} ; then
+		result="$result ! rtph264pay config-interval=10 pt=96"
+	fi
 	result="$result ! mux.sink_0 rtpmux name=mux"
 	echo $result
 }
 function encoder_args {
 	local result
 	if ${enable[h265]} ; then
-	   result="video/x-h265,stream-format=(string)byte-stream,width=(int)$1,height=(int)$2,framerate=(fraction)$3\""
+		result="\"video/x-h265,stream-format=(string)byte-stream,width=(int)$1,height=(int)$2,framerate=(fraction)$3\""
 	else
-	   result="video/x-h264,stream-format=(string)byte-stream,width=(int)$1,height=(int)$2,framerate=(fraction)$3\""
+		result="\"video/x-h264,stream-format=(string)byte-stream,width=(int)$1,height=(int)$2,framerate=(fraction)$3\""
 	fi
 	if [ ! -z "${config[video_profile]}" ] ; then result="$result,profile=(string)${config[video_profile]}" ; fi
 	if ${enable[h265]} ; then
-	   result="$result ! h265parse"
+		result="$result ! h265parse"
 	else
-	   result="$result ! h264parse"
+		result="$result ! h264parse"
 	fi
 	echo $result
 }
