@@ -13,11 +13,6 @@ set DEFAULT_MCAST_IFACE=*Wi-Fi
 @rem https://stackoverflow.com/questions/49958663/how-to-properly-escape-parentheses-in-windows-batch-file
 set "AUDIO_CAPS=application/x-rtp"
 set "VIDEO_CAPS=application/x-rtp,media=(string)video,clock-rate=(int)90000,payload=(int)96,encoding-name=(string)"
-@rem Audio buffer is based on the AAC encoder channels: 1208=1 channel, 1210=2 channel
-@rem https://stackoverflow.com/questions/7760545/escape-double-quotes-in-parameter
-set "AUDIO_DEPAY=rtpmp4adepay ! ^"audio/mpeg,codec_data=1208^" ! queue"
-set "VIDEO_DEPAY=rtph264depay ! h264parse ! queue"
-
 
 @rem accept command line arguments for Video/Audio Port, IP address
 @rem https://stackoverflow.com/questions/42283939/set-variable-inside-if-statement-windows-batch-file
@@ -61,6 +56,13 @@ goto arg5loop
 :arg5default
 set MCAST_IFACE=%DEFAULT_MCAST_IFACE%
 :argEnd
+
+@rem Audio buffer is based on the AAC encoder channels: 1208=1 channel, 1210=2 channel
+@rem https://stackoverflow.com/questions/7760545/escape-double-quotes-in-parameter
+set "AUDIO_DEPAY=rtpmp4adepay ! ^"audio/mpeg,codec_data=1208^" ! queue"
+@rem VIDEO_DEPAY must be set depending on H264 or H265
+if "%VIDEO_ENCD%" == "H264" set "VIDEO_DEPAY=rtph264depay ! h264parse ! queue"
+if "%VIDEO_ENCD%" == "H265" set "VIDEO_DEPAY=rtph265depay ! h265parse ! queue"
 
 @rem compute the source command with respect to the UDP address
 @for /F "tokens=1 delims=." %%a in ("%UDP_IP%") do ( set OCTET=%%a )
