@@ -10,7 +10,9 @@
 #   FLAGS: overrides a list of flags to enable
 #     audio - enable audio source multiplexing
 #     debug - perform a dry-run and only report the pipeline that would be executed
-#     h264 - prefer H.264 source from camera
+#     encd - prefer H.264/H.265 source from camera
+#     h264 - make output stream be H.264
+#     h265 - make output stream be H.265
 #     mjpg - fallback to Motion JPEG
 #     preview - render outgoing stream on local framebuffer
 #     progressreport - inject a progress report on the preview stream
@@ -37,7 +39,7 @@ declare -A config
 config[width]=${WIDTH} ; if [ -z "${config[width]}" ] ; then config[width]=1280 ; fi
 config[height]=${HEIGHT} ; if [ -z "${config[height]}" ] ; then config[height]=720 ; fi
 config[fps]=${FPS} ; if [ -z "${config[fps]}" ] ; then config[fps]=30 ; fi
-config[kbps]=${H264_BITRATE} ; if [ -z "${config[kbps]}" ] ; then config[kbps]=1800 ; fi
+config[kbps]=${VIDEO_BITRATE} ; if [ -z "${config[kbps]}" ] ; then config[kbps]=1800 ; fi
 config[flags]="${FLAGS}"
 config[audio]="${AUDIO}"                    # device identifier selected from $(aplay -l | grep 'card.*device')
 config[audio_latency]=${AUDIO_LATENCY_MS}   # override computed latency
@@ -46,8 +48,8 @@ config[audio_encoders]="${AUDIO_ENCODERS}"  # list of audio encoders to use
 config[video_encoders]="${VIDEO_ENCODERS}"  # list of video encoders to use
 config[video_scalers]="${VIDEO_SCALERS}"    # list of video scalers to use
 config[video_device]=${VIDEO_DEVICE}        # video device path to use (empty to autoselect)
-config[h264_profile]=${H264_PROFILE}        # high, main, baseline or empty
-config[h264_rate]=${H264_RATE}              # constant, variable or empty
+config[video_profile]=${VIDEO_PROFILE}      # high, main, baseline or empty
+config[video_rate]=${VIDEO_RATE}            # constant, variable or empty
 # NB: the exact ratio of the max-size-time parameter between the flvmux latency
 #     and the audio buffer is still a subject of investigation.  Empirical
 #     results show that 5:1 can work for minimum-latency applications, but 10:10
@@ -84,7 +86,7 @@ else
 fi
 
 # defaults and flags
-_FLG="audio,debug,h264,mjpg,preview,progressreport,rtmp,scale,single,snow,speedtest,udp,wan,xraw,h265"
+_FLG="audio,debug,encd,h264,h265,mjpg,preview,progressreport,rtmp,scale,single,snow,speedtest,udp,wan,xraw"
 declare -A enable
 for k in $(IFS=',';echo $_FLG) ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
@@ -95,19 +97,30 @@ declare -A gst
 gst[version]=$(gst-launch-1.0 --version | head -1)
 gst[videoscale]="videoscale"
 
-# Define Encoder Pipelines
-declare -A encoder
-declare -A encoder_formats
+# Select which encoders are possible
 if [ -z "${config[video_scalers]}" ] ; then
-	config[video_scalers]="imxipuvideotransform"
+    if [ "${PLATFORM}" == "IMX6" ] ; then
+	   config[video_scalers]="imxipuvideotransform"
+	fi
 fi
 if [ -z "${config[video_encoders]}" ] ; then
-	config[video_encoders]="imxvpuenc_h264,omxh264enc,x264enc"
+    if ${enable[h265]} ; then
+        config[video_encoders]="imxvpuenc_h265,omxh265enc,x265enc"
+    elif ${enable[h264]} ; then
+        config[video_encoders]="imxvpuenc_h264,omxh264enc,x264enc"
+    else
+        # This is an invalid configuration that will get trapped in encoder selection below.
+        config[video_encoders]=""
+    fi
 fi
 if [ -z "${config[audio_encoders]}" ] ; then
 	#config[audio_encoders]="avenc_aac,voaacenc"
 	config[audio_encoders]="voaacenc"
 fi
+
+# Define Encoder Pipelines (all types, the one used is selected based on availablity)
+declare -A encoder
+declare -A encoder_formats
 
 # i.MX6
 encoder[imxvpuenc_h264]="imxvpuenc_h264 bitrate=${config[kbps]} idr-interval=$((${config[fps]} * 2))"
@@ -131,39 +144,36 @@ if [ "${PLATFORM}" == "RPIX" ] ; then
 	# NB: https://www.phoronix.com/forums/forum/software/desktop-linux/864973-libav-adds-h-264-mpeg4-encoders-using-openmax-il?p=865870#post865870
 	encoder[avenc_h264_omx]="avenc_h264_omx bitrate=$((${config[kbps]} * 1000)) threads=auto keyint-min=$((${config[fps]} * 2))"
 	encoder_formats[avenc_h264_omx]='I420'
-	if [ ! -z "${config[h264_profile]}" ] ; then
-		encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} profile=${config[h264_profile]}"
+	if [ ! -z "${config[video_profile]}" ] ; then
+		encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} profile=${config[video_profile]}"
 	fi
-	if [ "${config[h264_rate]}" == "constant" ] ; then
+	if [ "${config[video_rate]}" == "constant" ] ; then
 		encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} pass=cbr"
-	elif [ "${config[h264_rate]}" == "variable" ] ; then
+	elif [ "${config[video_rate]}" == "variable" ] ; then
 		encoder[avenc_h264_omx]="${encoder[avenc_h264_omx]} pass=vbr"
 	fi
 	# https://www.raspberrypi.org/forums/viewtopic.php?t=240170
 	encoder[v4l2h264enc]="v4l2h264enc"
 	encoder_formats[v4l2h264enc]='I420|YV12|NV12|RGB16|RGB|BGR|BGRA|YUY2|YVYU|UYVY'
 	extra="encode,video_bitrate=$((${config[kbps]} * 1000)),h264_i_frame_period=$((${config[fps]} * 2))"
-	if [ ! -z "${config[h264_profile]}" ] ; then
-		extra="${extra},h264_profile=${config[h264_profile]}"
+	if [ ! -z "${config[video_profile]}" ] ; then
+		extra="${extra},h264_profile=${config[video_profile]}"
 	fi
-	if [ "${config[h264_rate]}" == "constant" ] ; then
+	if [ "${config[video_rate]}" == "constant" ] ; then
 		extra="${extra},video_bitrate_mode=1"
-	elif [ "${config[h264_rate]}" == "variable" ] ; then
+	elif [ "${config[video_rate]}" == "variable" ] ; then
 		extra="${extra},video_bitrate_mode=0"
 	fi
 	encoder[v4l2h264enc]="${encoder[v4l2h264enc]} extra-controls=\"${extra}\""
 # NVidia variations are different from Ubuntu
 elif [ "${PLATFORM}" == "NVID" ] ; then
-	if ${enable[h265]} ; then
-		encoder[omxh265enc]="omxh265enc bitrate=$((${config[kbps]} * 1000)) iframeinterval=$((${config[fps]} * 2))" ;
-		encoder_formats[omxh265enc]='I420|NV12' ;
-	else
-		encoder[omxh264enc]="omxh264enc bitrate=$((${config[kbps]} * 1000)) iframeinterval=$((${config[fps]} * 2))" ; 
-		encoder_formats[omxh264enc]='I420|NV12' ;
-	fi
-	if [ "${config[h264_rate]}" == "constant" ] ; then
+	encoder[omxh265enc]="omxh265enc bitrate=$((${config[kbps]} * 1000)) iframeinterval=$((${config[fps]} * 2))"
+	encoder_formats[omxh265enc]='I420|NV12'
+	encoder[omxh264enc]="omxh264enc bitrate=$((${config[kbps]} * 1000)) iframeinterval=$((${config[fps]} * 2))"
+	encoder_formats[omxh264enc]='I420|NV12'
+	if [ "${config[video_rate]}" == "constant" ] ; then
 		encoder[omxh264enc]="${encoder[omxh264enc]} control-rate=constant"
-	elif [ "${config[h264_rate]}" == "variable" ] ; then
+	elif [ "${config[video_rate]}" == "variable" ] ; then
 		encoder[omxh264enc]="${encoder[omxh264enc]} control-rate=variable-skip-frames"
 	fi
 fi
@@ -219,25 +229,32 @@ fi
 
 # Common parts for gst spells
 function flvmux {
+    # BEWARE: flvmux is reported to not support h.265
 	local result="$(timequeue $qmst leaky=upstream) ! mux.video flvmux streamable=true name=mux"
 	if [ "${PLATFORM}" == "RPIX" ] ; then result="$result latency=$(($qmst * ${config[flvmux_ratio]} * 1000000))" ; fi
 	echo $result
 }
 function rtpmux {
-	local result="$(timequeue $qmst leaky=upstream) ! rtph264pay config-interval=10 pt=96 ! mux.sink_0 rtpmux name=mux"
-	if ${enable[h265]} ; then result="$(timequeue $qmst leaky=upstream) ! rtph265pay config-interval=10 pt=96 ! mux.sink_0 rtpmux name=mux" ; fi
+	local result="$(timequeue $qmst leaky=upstream)"
+	if ${enable[h265]} ; then result="$result ! rtph265pay config-interval=10 pt=96"
+	elif ${enable[h264]} ; then result="$result ! rtph264pay config-interval=10 pt=96"
+	result="$result ! mux.sink_0 rtpmux name=mux"
 	echo $result
 }
-function h264args {
-	local result="\"video/x-h264,stream-format=(string)byte-stream,width=(int)$1,height=(int)$2,framerate=(fraction)$3\""
-	if [ ! -z "${config[h264_profile]}" ] ; then result="$result,profile=(string)${config[h264_profile]}" ; fi
-	result="$result ! h264parse"
+function encoder_args {
+	local result
+	if ${enable[h265]} ; then
+	   result="video/x-h265,stream-format=(string)byte-stream,width=(int)$1,height=(int)$2,framerate=(fraction)$3\""
+	else
+	   result="video/x-h264,stream-format=(string)byte-stream,width=(int)$1,height=(int)$2,framerate=(fraction)$3\""
+	fi
+	if [ ! -z "${config[video_profile]}" ] ; then result="$result,profile=(string)${config[video_profile]}" ; fi
+	if ${enable[h265]} ; then
+	   result="$result ! h265parse"
+	else
+	   result="$result ! h264parse"
+	fi
 	echo $result
-}
-function h265args {
-       local result="\"video/x-h265,stream-format=(string)byte-stream,width=(int)$1,height=(int)$2,framerate=(fraction)$3\""
-       result="$result ! h265parse"
-       echo $result
 }
 function mjpgargs {
 	local result="\"image/jpeg,width=(int)$1,height=(int)$2,framerate=(fraction)$3\""
@@ -331,14 +348,15 @@ if [ -z "${gst[encoder]}" ] || [ -z "${gst[encoder_formats]}" ] ; then
         done
     fi
     if ${enable[mjpg]} || ${enable[xraw]} ; then
-        if ! ${enable[h264]} ; then
-            LOG NO Encoder available - pipeline cannot be constructed
+        # camera is jpeg or raw
+        if ! ${enable[h264]} || ! ${enable[h265]} ; then
+            LOG {h264,h265} not in FLAGS - pipeline cannot be constructed
             exit 1
         fi
+    elif ! ${enable[encd]} ; then
+        LOG Invalid FLAGS - pipeline cannot be constructed
+        exit 1
     fi
-    # NB: encoder is not used for h264 source
-    LOG NO Encoder available - pipeline may fail
-    gst[encoder]="queue"
 fi
 
 # Determine which video scaler we will use
@@ -365,7 +383,10 @@ function select_video_device {
 	if v4l2-ctl -d $d --list-formats > /tmp/video.$$ ; then
 		LOG DEBUG consider $d
 		>&2 cat /tmp/video.$$ >> $log
-		if grep H264 /tmp/video.$$ > /dev/null && ${enable[h264]} ; then
+		if grep H265 /tmp/video.$$ > /dev/null && ${enable[encd]} && ${enable[h265]} ; then
+			LOG H265=$d
+			result="h265 $d false ${config[width]} ${config[height]} stop"
+		elif grep H264 /tmp/video.$$ > /dev/null && ${enable[encd]} && ${enable[h264]} ; then
 			LOG H264=$d
 			result="h264 $d false ${config[width]} ${config[height]} stop"
 		elif grep MJPG /tmp/video.$$ > /dev/null && ${enable[mjpg]} ; then
@@ -596,15 +617,9 @@ fi
 # https://stackoverflow.com/questions/59085054/gstreamer-issue-with-adding-timeoverlay-on-rtmp-stream
 if ${enable[debug]} ; then gst[command]="" ; else gst[command]="gst-launch-1.0" ; fi
 if [ -z "${gst[filesink]}" ] ; then
-	if ${enable[h265]} ; then
-		gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(h265args ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[avsink]} ${gst[audiopipeline]}" ;
-	else
-		 gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[avsink]} ${gst[audiopipeline]}" ; fi
+    gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(encoder_args ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[avsink]} ${gst[audiopipeline]}"
 else
-	if ${enable[h265]} ; then
-		gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(h265args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}" ;
-	else
-		gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(h264args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}" ; fi
+    gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(encoder_args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}"
 fi
 # NB: this is the only place where stdout is written to, so that the output of this script is a gstreamer pipeline
 echo "${gst[command]}"
