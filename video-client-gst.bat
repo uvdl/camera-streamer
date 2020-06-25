@@ -7,11 +7,12 @@ set GST_PLUGIN_PATH_1_0=%GSTREAMER_1_0_ROOT_X86_64%\lib\gstreamer-1.0
 set DEFAULT_VIDEO_PORT=5600
 set DEFAULT_AUDIO_PORT=0
 set DEFAULT_UDP_IP=224.1.1.1
+set DEFAULT_VIDEO_ENCD=H264
 set DEFAULT_MCAST_IFACE=*Wi-Fi
 @rem These caps are obtained from the "udpsink0.GstPad:sink: caps =" line
 @rem https://stackoverflow.com/questions/49958663/how-to-properly-escape-parentheses-in-windows-batch-file
 set "AUDIO_CAPS=application/x-rtp"
-set "VIDEO_CAPS=application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264,payload=(int)96"
+set "VIDEO_CAPS=application/x-rtp,media=(string)video,clock-rate=(int)90000,payload=(int)96,encoding-name=(string)"
 @rem Audio buffer is based on the AAC encoder channels: 1208=1 channel, 1210=2 channel
 @rem https://stackoverflow.com/questions/7760545/escape-double-quotes-in-parameter
 set "AUDIO_DEPAY=rtpmp4adepay ! ^"audio/mpeg,codec_data=1208^" ! queue"
@@ -39,18 +40,25 @@ goto arg4
 :arg3default
 set UDP_IP=%DEFAULT_UDP_IP%
 :arg4
-@rem https://stackoverflow.com/questions/761615/is-there-a-way-to-indicate-the-last-n-parameters-in-a-batch-file/761658#761658
 @if "%4"=="" goto arg4default
+set VIDEO_ENCD=%4
+goto arg5
+:arg4default
+set VIDEO_ENCD=%DEFAULT_VIDEO_ENCD%
+:arg5
+@rem https://stackoverflow.com/questions/761615/is-there-a-way-to-indicate-the-last-n-parameters-in-a-batch-file/761658#761658
+@if "%5"=="" goto arg5default
+shift
 shift
 shift
 shift
 set MCAST_IFACE=%1
-:arg4loop
+:arg5loop
 shift
 if [%1]==[] goto argEnd
 set MCAST_IFACE=%MCAST_IFACE% %~1
-goto arg4loop
-:arg4default
+goto arg5loop
+:arg5default
 set MCAST_IFACE=%DEFAULT_MCAST_IFACE%
 :argEnd
 
@@ -87,14 +95,14 @@ set MCAST_IFACE=%DEFAULT_MCAST_IFACE%
     )
 ) else if /I "%AUDIO_PORT%" EQU "0" (
     echo "Video Only"
-    @echo gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%" ! %VIDEO_DEPAY% ! decodebin ! progressreport ! autovideosink
-    gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%" ! %VIDEO_DEPAY% ! decodebin ! progressreport ! autovideosink
+    @echo gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%%VIDEO_ENCD%" ! %VIDEO_DEPAY% ! decodebin ! progressreport ! autovideosink
+    gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%%VIDEO_ENCD%" ! %VIDEO_DEPAY% ! decodebin ! progressreport ! autovideosink
 ) else if /I "%VIDEO_PORT%" EQU "%AUDIO_PORT%" (
     echo "Video+Audio using same port (flvmux)"
-    @echo gst-launch-1.0 %UDPSRC%%VIDEO_PORT% ! queue ! flvdemux name=mux mux.video ! "%VIDEO_CAPS%" ! %VIDEO_DEPAY% ! decodebin ! autovideosink mux.audio ! "%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
-    gst-launch-1.0 %UDPSRC%%VIDEO_PORT% ! queue ! flvdemux name=mux mux.video ! "%VIDEO_CAPS%" ! %VIDEO_DEPAY% ! decodebin ! autovideosink mux.audio ! "%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
+    @echo gst-launch-1.0 %UDPSRC%%VIDEO_PORT% ! queue ! flvdemux name=mux mux.video ! "%VIDEO_CAPS%%VIDEO_ENCD%" ! %VIDEO_DEPAY% ! decodebin ! autovideosink mux.audio ! "%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
+    gst-launch-1.0 %UDPSRC%%VIDEO_PORT% ! queue ! flvdemux name=mux mux.video ! "%VIDEO_CAPS%%VIDEO_ENCD%" ! %VIDEO_DEPAY% ! decodebin ! autovideosink mux.audio ! "%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
 ) else (
     echo "Video+Audio using separate ports no mux"
-    @echo gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%" ! %VIDEO_DEPAY% ! decodebin ! autovideosink udpsrc %UDPSRC%%AUDIO_PORT% caps="%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
-    gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%" ! %VIDEO_DEPAY% ! decodebin ! autovideosink udpsrc %UDPSRC%%AUDIO_PORT% caps="%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
+    @echo gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%%VIDEO_ENCD%" ! %VIDEO_DEPAY% ! decodebin ! autovideosink udpsrc %UDPSRC%%AUDIO_PORT% caps="%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
+    gst-launch-1.0 %UDPSRC%%VIDEO_PORT% caps="%VIDEO_CAPS%%VIDEO_ENCD%" ! %VIDEO_DEPAY% ! decodebin ! autovideosink udpsrc %UDPSRC%%AUDIO_PORT% caps="%AUDIO_CAPS%" ! %AUDIO_DEPAY% ! decodebin ! audioconvert ! directsoundsink sync=false
 )

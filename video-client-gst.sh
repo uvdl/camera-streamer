@@ -1,40 +1,28 @@
 #!/bin/bash
 # usage:
-#   video-client-gst.sh [VPORT [APORT [IP [IFACE]]]]
-#
+#   video-client-gst.sh [VPORT [APORT [IP [ENCD [IFACE]]]]]
+#{
 # where:
 #   VPORT, APORT: are integers describing the desired UDP PORT for (V)ideo and (A)udio
-#   IP: is a string 
-#   URL: overrides the stream URL in the config file
-#   SKEY: overrides the stream key in the config file
-#   FLAGS: overrides a list of flags to enable
-#     audio - enable audio source multiplexing
-#     debug - perform a dry-run and only report the pipeline that would be executed
-#     rtmp - enable rtmp output to the internet
-#     h264 - prefer H.264 source from camera
-#     mjpg - fallback to Motion JPEG
-#     udp - enable UDP output to LAN
-#     xraw - fallback to RAW video (NB: may be bandwidth limited if using USB)
+#   IP: is a string of the IPv4 address to listen to (multicast range aware)
+#   ENCD: define the expected video encoding (H264 or H265)
+#   IFACE: define the local network interface to use for multicast IP (eth0, etc.)
 #
 declare -A config
-# https://stackoverflow.com/questions/31758480/modify-global-variable-array-through-a-bash-function-passing-the-function-the-n
-# NB: currently cannot make this work
-##function argument {
-##	#config[$2]=$3
-##	#if [ -z "${config[$2]}" ] ; then config[$2]=$4 ; fi
-##	printf -v "$1[$2]" '%s' $3
-##	if [ -z "$1[$2]" ] ; then printf -v "$1[$2]" '%s' $4 ; fi
-##}
-##$(argument config video_port $1 5600)
 config[video_port]="$1" ; if [ -z "${config[video_port]}" ] ; then config[video_port]=5600 ; fi
 config[audio_port]="$2" ; if [ -z "${config[audio_port]}" ] ; then config[audio_port]=0 ; fi
 config[udp_ip]="$3"
-config[mcast_if]="$4" ; if [ -z "${config[mcast_if]}" ] ; then config[mcast_if]=eth0 ; fi
+config[video_encd]="$4" ; if [ -z "${config[video_encd]}" ] ; then config[video_encd]=H264 ; fi
+config[mcast_if]="$5" ; if [ -z "${config[mcast_if]}" ] ; then config[mcast_if]=eth0 ; fi
 config[audio_caps]="application/x-rtp"
-config[video_caps]="application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264,payload=(int)96"
+config[video_caps]="application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)${config[video_encd]},payload=(int)96"
 # Audio buffer is based on the AAC encoder channels: 1208=1 channel, 1210=2 channel
 config[audio_depay]="rtpmp4adepay ! \"audio/mpeg,codec_data=(buffer)1208\" ! queue"
-config[video_depay]="rtph264depay ! h264parse ! queue"
+if [ "${config[video_encd]}" == "H265" ] ; then
+	config[video_depay]="rtph265depay ! h265parse ! queue"
+else
+	config[video_depay]="rtph264depay ! h264parse ! queue"
+fi
 
 declare -A gst
 if [ -z "${config[udp_ip]}" ] ; then
