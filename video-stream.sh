@@ -566,7 +566,14 @@ elif [ ! -z "${dev[xraw]}" ] ; then
 		# for USB2.0, cameras cannot emit 1080p@30fps/720p@30fps so we pull 640x???@30fps and upscale
 		# NB: videoconvert should negotiate optimally so a camera that can emit I420 will be slightly more efficient
 		sourceinfo="XRAW ${dev[xraw]} ${config[source_width]}>${config[width]} ${config[source_height]}>${config[height]} ${config[fps]}"
-		gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[source_width]} ${config[source_height]} ${config[fps]})"
+		# HACK for BOSON 60/30 fps camera
+		if [ $source_width -eq 640 -a $source_height -eq 512 -a $fps -ne 30 ] ; then
+			LOG BOSON 30/$fps rate adjustment
+			gst[videorate]="videorate max-rate=$fps skip-to-first=true"
+			gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[source_width]} ${config[source_height]} 30/1) ! ${gst[videorate]}"
+		else
+			gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[source_width]} ${config[source_height]} ${config[fps]})"
+		fi
 		if ${enable[transform]} ; then
 			sourceinfo="$sourceinfo (transformed)"
 			gst[sourcepipeline]="${gst[sourcepipeline]} ! $(transformer ${config[width]} ${config[height]} ${config[fps]} I420)"
