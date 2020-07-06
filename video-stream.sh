@@ -91,6 +91,14 @@ declare -A enable
 for k in $(IFS=',';echo $_FLG) ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
 done
+# legacy debug behavior...
+if ${enable[debug]} ; then
+	if ! ${enable[encpipe]} && ! ${enable[srcpipe]} && ! ${enable[snkpipe]} ; then
+		enable[encpipe]=true
+		enable[srcpipe]=true
+		enable[snkpipe]=true
+	fi
+fi
 
 # gstreamer pipeline segments
 declare -A gst
