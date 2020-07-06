@@ -86,7 +86,7 @@ else
 fi
 
 # defaults and flags
-_FLG="audio,debug,encd,h264,h265,mjpg,preview,progressreport,rtmp,scale,single,snow,speedtest,udp,wan,xraw"
+_FLG="audio,debug,encd,encodepipeline,h264,h265,mjpg,preview,progressreport,rtmp,scale,single,sinkpipeline,snow,sourcepipeline,speedtest,udp,wan,xraw"
 declare -A enable
 for k in $(IFS=',';echo $_FLG) ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
@@ -708,15 +708,21 @@ fi
 # http://gstreamer-devel.966125.n4.nabble.com/Does-Gstreamer-has-a-element-that-can-split-one-stream-into-two-td966351.html
 # https://serverfault.com/a/975753
 # https://stackoverflow.com/questions/59085054/gstreamer-issue-with-adding-timeoverlay-on-rtmp-stream
-if ${enable[debug]} ; then gst[command]="" ; else gst[command]="gst-launch-1.0" ; fi
+if ${enable[debug]} ; then
+	gst[command]=""
+	if ${enable[sourcepipeline]} ; then gst[command]="${gst[command]} ${gst[sourcepipeline]} !" ; fi
+	if ${enable[encodepipeline]} ; then gst[command]="${gst[command]} $(encoder_args ${config[width]} ${config[height]} ${config[fps]}) !" ; fi
+	if ${enable[sinkpipeline]} ; then gst[command]="${gst[command]} ${gst[avsink]}" ; fi
+	# NB: this is the only place where stdout is written to, so that the output of this script is a gstreamer pipeline
+	echo "${gst[command]}"
+	exit 0
+fi
+gst[command]="gst-launch-1.0"
 if [ -z "${gst[filesink]}" ] ; then
 	gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(encoder_args ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[avsink]} ${gst[audiopipeline]}"
 else
 	gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(encoder_args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}"
 fi
-# NB: this is the only place where stdout is written to, so that the output of this script is a gstreamer pipeline
-echo "${gst[command]}"
-if ${enable[debug]} ; then exit 0 ; fi
 echo "${gst[command]}"  > ${LOGDIR}/gst.cmd.$$
 LOG BEGIN $sourceinfo ${config[kbps]} kbps ${LOGDIR}/gst.cmd.$$
 if ! source ${LOGDIR}/gst.cmd.$$ ; then
