@@ -86,7 +86,7 @@ else
 fi
 
 # defaults and flags
-_FLG="audio,debug,encpipe,encd,h264,h265,mjpg,preview,progressreport,rtmp,scale,single,snkpipe,snow,speedtest,srcpipe,udp,wan,xraw"
+_FLG="audio,debug,encd,encodepipeline,h264,h265,mjpg,preview,progressreport,rtmp,scale,single,sinkpipeline,snow,sourcepipeline,speedtest,udp,wan,xraw"
 declare -A enable
 for k in $(IFS=',';echo $_FLG) ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
@@ -628,17 +628,15 @@ function transformer {
 if [ ! -z "${dev[h264]}" ] ; then
 	sourceinfo="H.264 ${dev[h264]} ${config[width]} ${config[height]} ${config[fps]}"
 	gst[sourcepipeline]="$(videosource h264 ${dev[h264]})"
-	# TODO: if enable[h265], it means we need to transcode h264->h265, which is silly, but if thats what is wanted...
-	gst[encoder]=""
 elif [ ! -z "${dev[mjpg]}" ] ; then
 	sourceinfo="MJPG ${dev[mjpg]} ${config[width]} ${config[height]} ${config[fps]}"
-	gst[sourcepipeline]="$(videosource mjpg ${dev[mjpg]}) ! $(mjpgargs ${config[width]} ${config[height]} ${config[fps]}) ! jpegdec ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420)"
+	gst[sourcepipeline]="$(videosource mjpg ${dev[mjpg]}) ! $(mjpgargs ${config[width]} ${config[height]} ${config[fps]}) ! jpegdec ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420) ! ${gst[encoder]}"
 elif [ -z "${config[source_width]}" ] || [ -z "${config[source_height]}" ] ; then
 	LOG NO Source available - test pipeline enabled
 	sourceinfo="TEST ${config[width]} ${config[height]} ${config[fps]}"
 	gst[sourcepipeline]="$(videosource test) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420)"
 	if ! ${enable[snow]} ; then gst[sourcepipeline]="${gst[sourcepipeline]} ! $(overlay ${config[width]} ${config[height]} ${config[fps]} overlay ${gst[encoder]})" ; fi
-	gst[sourcepipeline]="${gst[sourcepipeline]}"
+	gst[sourcepipeline]="${gst[sourcepipeline]} ! ${gst[encoder]}"
 elif [ ! -z "${dev[xraw]}" ] ; then
 	config_width=$(( ${config[width]} ))
 	config_height=$(( ${config[height]} ))
@@ -651,9 +649,9 @@ elif [ ! -z "${dev[xraw]}" ] ; then
 		sourceinfo="XRAW ${dev[xraw]} ${config[width]} ${config[height]} ${config[fps]}"
 		if [[ ${gst[encoder]} =~ .*v4l2h264enc.* ]] ; then
 			# for v4l2h264enc use, do not give I420 format to v4l2src
-			gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]})"
+			gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[encoder]}"
 		else
-			gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420)"
+			gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420) ! ${gst[encoder]}"
 		fi
 		sourceinfo="XRAW ${dev[xraw]} ${config[width]} ${config[height]} ${config[fps]}"
 	else
@@ -670,13 +668,13 @@ elif [ ! -z "${dev[xraw]}" ] ; then
 			LOG SOURCE ${source_width}x${source_height}/${config_width}x${config_height} transform adjustment
 			gst[sourcepipeline]="${gst[sourcepipeline]} ! $(transformer ${config[width]} ${config[height]} ${config[fps]} I420)"
 		fi
-		gst[sourcepipeline]="${gst[sourcepipeline]}"
+		gst[sourcepipeline]="${gst[sourcepipeline]} ! ${gst[encoder]}"
 	fi
 else
 	sourceinfo="TEST ${config[width]} ${config[height]} ${config[fps]}"
 	gst[sourcepipeline]="$(videosource test) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420)"
 	if ! ${enable[snow]} ; then gst[sourcepipeline]="${gst[sourcepipeline]} ! $(overlay ${config[width]} ${config[height]} ${config[fps]} overlay ${gst[encoder]})" ; fi
-	gst[sourcepipeline]="${gst[sourcepipeline]}"
+	gst[sourcepipeline]="${gst[sourcepipeline]} ! ${gst[encoder]}"
 fi
 
 
@@ -712,18 +710,18 @@ fi
 # https://stackoverflow.com/questions/59085054/gstreamer-issue-with-adding-timeoverlay-on-rtmp-stream
 if ${enable[debug]} ; then
 	gst[command]=""
-	if ${enable[srcpipe]} ; then gst[command]="${gst[command]} ${gst[sourcepipeline]} !" ; fi
-	if ${enable[encpipe]} ; then gst[command]="${gst[command]} ${gst[encoder]} ! $(encoder_args ${config[width]} ${config[height]} ${config[fps]}) !" ; fi
-	if ${enable[snkpipe]} ; then gst[command]="${gst[command]} ${gst[avsink]}" ; fi
+	if ${enable[sourcepipeline]} ; then gst[command]="${gst[command]} ${gst[sourcepipeline]} !" ; fi
+	if ${enable[encodepipeline]} ; then gst[command]="${gst[command]} $(encoder_args ${config[width]} ${config[height]} ${config[fps]}) !" ; fi
+	if ${enable[sinkpipeline]} ; then gst[command]="${gst[command]} ${gst[avsink]}" ; fi
 	# NB: this is the only place where stdout is written to, so that the output of this script is a gstreamer pipeline
 	echo "${gst[command]}"
 	exit 0
 fi
 gst[command]="gst-launch-1.0"
 if [ -z "${gst[filesink]}" ] ; then
-	gst[command]="${gst[command]} ${gst[sourcepipeline]} ! ${gst[encoder]} ! $(encoder_args ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[avsink]} ${gst[audiopipeline]}"
+	gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(encoder_args ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[avsink]} ${gst[audiopipeline]}"
 else
-	gst[command]="${gst[command]} ${gst[sourcepipeline]} ! ${gst[encoder]} ! $(encoder_args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}"
+	gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(encoder_args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}"
 fi
 echo "${gst[command]}"  > ${LOGDIR}/gst.cmd.$$
 LOG BEGIN $sourceinfo ${config[kbps]} kbps ${LOGDIR}/gst.cmd.$$
