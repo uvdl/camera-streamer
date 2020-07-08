@@ -104,7 +104,7 @@ fi
 declare -A gst
 gst[version]=$(gst-launch-1.0 --version | head -1)
 gst[videoscale]="videoscale"
-gst[videoscale_formats]="I420|YUY2|UYVY|YVYU|NV12|GRAY8|BGRx|RGBA"
+gst[videoscale_formats]='RGBA|BGRx|NV12|UYVY|YVYU|YUY2|GRAY8|I420'	# NB: increasing priority (highest last)
 
 # Select which encoders are possible
 if [ -z "${config[video_scalers]}" ] ; then
@@ -190,7 +190,7 @@ elif [ "${PLATFORM}" == "NVID" ] ; then
 		encoder[omxh264enc]="${encoder[omxh264enc]} control-rate=variable-skip-frames"
 	fi
 	scaler[nvvidconv]="nvvidconv output-buffers=1"
-	scaler_formats[nvvidconv]='I420|YUY2|UYVY|YVYU|NV12|GRAY8|BGRx|RGBA'
+	scaler_formats[nvvidconv]='RGBA|BGRx|NV12|UYVY|YVYU|YUY2|GRAY8|I420'	# NB: increasing priority (highest last)
 fi
 
 # logging to file and stdout (which is journaled under systemd)
