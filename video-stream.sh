@@ -317,7 +317,7 @@ function parse {
 			fi
 		fi
 	fi
-	return $result
+	echo $result
 
 # RTMP to ${URL}/${SKEY}
 # NB: it seems that one of the keys to getting audio/video interleaving is to put
