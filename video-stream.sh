@@ -323,12 +323,15 @@ function parse {
 	done
 	if [ -z "$result" ] ; then
 		result=$default
-	elif [ "$result" == "{" -a ! -z "$default" ] ; then
-		# result is a list; pick the default if it is in
-		if echo $input | grep -E $key | grep -E $default >> $dlog ; then
+	elif [ "$result" == "{" ] ; then
+		# result is a list; pick the default if it is given
+		if [ ! -z "$default" ] && echo $input | grep -E $key | grep -E $default >> $dlog ; then
 			result=$default
 		else
-			echo "*** $key $default not found in $input" >> $dlog
+			# BOSON hack: pick 30fps
+			if [ "$key" == "framerate" ] ; then
+				result="30/1"
+			fi
 		fi
 	fi
 	echo $result
