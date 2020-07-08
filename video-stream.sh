@@ -626,7 +626,7 @@ function videosource {
 }
 
 function transformer {
-	local result="videoconvert ! ${gst[videoscale]}"
+	local result="${gst[videoscale]}"
 	if [[ ${gst[videoscale]} =~ .*imxipuvideotransform.* ]] ; then
 		# https://github.com/Freescale/gstreamer-imx/issues/27
 		#result="${gst[videoscale]} ! $(xrawargs $1 $2 $3 Y444) ! videoconvert ! $(xrawargs $1 $2 $3 $4)"
