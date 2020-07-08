@@ -86,11 +86,19 @@ else
 fi
 
 # defaults and flags
-_FLG="audio,debug,encd,h264,h265,mjpg,preview,progressreport,rtmp,scale,single,snow,speedtest,udp,wan,xraw"
+_FLG="audio,debug,encpipe,encd,h264,h265,mjpg,preview,progressreport,rtmp,scale,single,snkpipe,snow,speedtest,srcpipe,udp,wan,xraw"
 declare -A enable
 for k in $(IFS=',';echo $_FLG) ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
 done
+# legacy debug behavior...
+if ${enable[debug]} ; then
+	if ! ${enable[encpipe]} && ! ${enable[srcpipe]} && ! ${enable[snkpipe]} ; then
+		enable[encpipe]=true
+		enable[srcpipe]=true
+		enable[snkpipe]=true
+	fi
+fi
 
 # gstreamer pipeline segments
 declare -A gst
@@ -102,6 +110,8 @@ gst[videoscale_formats]='RGBA|BGRx|NV12|UYVY|YVYU|YUY2|GRAY8|I420'	# NB: increas
 if [ -z "${config[video_scalers]}" ] ; then
     if [ "${PLATFORM}" == "IMX6" ] ; then
 	   config[video_scalers]="imxipuvideotransform"
+	elif [ "${PLATFORM}" == "NVID" ] ; then
+		config[video_scalers]="nvvidconv"
 	fi
 fi
 if [ -z "${config[video_encoders]}" ] ; then
@@ -122,6 +132,8 @@ fi
 # Define Encoder Pipelines (all types, the one used is selected based on availablity)
 declare -A encoder
 declare -A encoder_formats
+declare -A scaler
+declare -A scaler_formats
 
 # i.MX6
 encoder[imxvpuenc_h264]="imxvpuenc_h264 bitrate=${config[kbps]} idr-interval=$((${config[fps]} * 2))"
@@ -211,18 +223,23 @@ if ${enable[debug]} ; then
     for k in ${!udp[@]} ; do
         >&2 echo "udp[$k]=${udp[$k]}"
     done
-    #exit 0
+	dlog=/tmp/debug.$$ ; echo "$(date --iso-8601='seconds')" > $dlog
+	>&2 echo "Diagnostic on $dlog"
+else
+	dlog=/dev/null
 fi
 
 # compute queue max-size-time parameter to avoid gstreamer
 # "Impossible to configure latency" warnings/errors.  We calculate the amount
 # of time for two frames at the desired frame rate (in nanoseconds).  Min 1ms.
+# NB: if a framerate conversion is needed, one frame at the source and one frame at the output framerate will be needed.
 fps=$(( ${config[fps]} ))
 qmst=$(( ${config[video_latency]} ))
 if [ $qmst -lt 1 ] ; then
 	# user desires minimum latency
 	if [ $fps -le 0 ] ; then qmst=1 ; else qmst=$(( (2000/$fps + 1) )) ; fi
 fi
+LOG DEBUG qmst=$qmst
 # when audio is enabled, there is a minimum amount of latency that has to be taken
 # into effect.  This causes the audmux and flvmux ratios to be recalculated.
 # failure to do this will result in RTMP streaming errors
@@ -320,23 +337,6 @@ function parse {
 	echo $result
 }
 
-# RTMP to ${URL}/${SKEY}
-# NB: it seems that one of the keys to getting audio/video interleaving is to put
-#     the flvmux into its own gstreamer thread and not making it part of the video pipeline
-#     Also, latency needs to be specified
-if ${enable[rtmp]} ; then
-	if [ -z "${USERNAME}" -o -z "${KEY}" ] ; then
-		gst[avsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]} live=1 flashver=FME/3.0%20(compatible;%20FMSc%201.0)\""
-	else
-		gst[avsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]}?username=${USERNAME}&password=${KEY}\""
-	fi
-elif ${enable[udp]} ; then
-	gst[avsink]="$(rtpmux) ! udpsink ${udp[props]}"
-else
-	# must instantiate a mux that has sink templates of .sink_0 and .sink_1 (like for UDP)
-	gst[avsink]="$(rtpmux) ! fakesink"
-fi
-
 # UDP to IP:PORT (separate video and audio ports)
 
 # Sync with server
@@ -391,12 +391,13 @@ if [ -z "${gst[encoder]}" ] || [ -z "${gst[encoder_formats]}" ] ; then
 fi
 
 # Determine which video scaler we will use
-if ${enable[scale]} || ${enable[transform]} ; then
+if ${enable[scale]} ; then
     for e in $(IFS=',';echo ${config[video_scalers]}) ; do
         LOG TRY $e
-	    if gst-inspect-1.0 $e >> $log ; then
+		if [ ! -z "${scaler[$e]}" ] && gst-inspect-1.0 $e >> $log ; then
             LOG SELECT $e
-            gst[videoscale]="$e"
+			gst[videoscale]="${scaler[$e]}"
+			gst[videoscale_formats]="${scaler_formats[$e]}"
             break
         fi
     done
@@ -408,52 +409,86 @@ fi
 # video devices
 # BEWARE: this is running in a separate shell, changes to the parent environment do not persist
 function select_video_device {
-	local d=$1
-	local height
+	local d=$1 e f
+	local format width height fps
 	local result=""
 	if v4l2-ctl -d $d --list-formats > /tmp/video.$$ ; then
 		LOG DEBUG consider $d
 		>&2 cat /tmp/video.$$ >> $log
+		echo "*** $d ***" >> $dlog
 		if grep H265 /tmp/video.$$ > /dev/null && ${enable[encd]} && ${enable[h265]} ; then
-			LOG H265=$d
-			result="h265 $d false ${config[width]} ${config[height]} stop"
+			result="h265 $d native ${config[width]} ${config[height]} ${config[fps]} stop"
+			LOG $result
 		elif grep H264 /tmp/video.$$ > /dev/null && ${enable[encd]} && ${enable[h264]} ; then
-			LOG H264=$d
-			result="h264 $d false ${config[width]} ${config[height]} stop"
+			result="h264 $d native ${config[width]} ${config[height]} ${config[fps]} stop"
+			LOG $result
 		elif grep MJPG /tmp/video.$$ > /dev/null && ${enable[mjpg]} ; then
-			LOG MJPG=$d
-			result="mjpg $d false ${config[width]} ${config[height]} stop"
+			result="mjpg $d native ${config[width]} ${config[height]} ${config[fps]} stop"
+			LOG $result
 		elif ! ${enable[xraw]} ; then
 			LOG DEBUG skip $d because raw format is not enabled
 		elif [ -z "${gst[encoder_formats]}" ] ; then
 			LOG DEBUG skip $d because no encoder format is given
 		else
-			width=$(( ${config[width]} ))
-			height=$(( ${config[height]} ))
-			if ${enable[scale]} && [ ${height/.*} -gt 480 ] ; then width=640 ; height=360 ; fi
 			( gst-launch-1.0 --gst-debug=v4l2src:5 v4l2src device=$d num-buffers=0 ! fakesink 2>&1 | sed -une '/caps of src/ s/[:;] /\n/gp' ) > /tmp/format.$$
 			>&2 cat /tmp/format.$$ >> $log
-			if grep -E ${gst[encoder_formats]} /tmp/format.$$ | grep -E $width | grep -E $height > /dev/null ; then
-				# encoder format matches *and* frame size matches
-				LOG XRAW=$d native $width/${config[width]} $height/${config[height]}
-				result="xraw $d false $width $height"
-			elif grep -E YUY2 /tmp/format.$$ | grep -E $width | grep -E $height > /dev/null ; then
-				# encode format can be converted and frame size matches
-				LOG XRAW=$d YUY2 $width/${config[width]} $height/${config[height]}
-				result="xraw $d true $width $height"
-			elif ${enable[scale]} && grep -E I420 /tmp/format.$$ > /dev/null ; then
-				# encoder format matches but height does not, pick it out
-				# TODO: this picks the first I420 frame which may be unsuitable for a raw format...
-				for e in $(IFS=',';grep -E I420 /tmp/format.$$ | head -1) ; do
-					k=$(echo $e | cut -f1 -d=)
-					v=$(echo $e | cut -f2 -d= | cut -f2 -d\) | cut -f1 -d,)
-					if [ "$k" == "width" ] ; then width=$(( ${v} )) ; fi
-					if [ "$k" == "height" ] ; then height=$(( ${v} )) ; fi
+			cat /tmp/format.$$ >> $dlog
+			format=I420
+			width=${config[width]}
+			height=${config[height]}
+			fps=${config[fps]}
+			if ${enable[scale]} && [ ${height/.*} -gt 480 ] ; then width=$(( $width/2 )) ; height=$(( $height/2 )) ; fi
+			echo "*** searching for $width x $height @ $fps" >> $dlog
+			if grep -E ${gst[encoder_formats]} /tmp/format.$$ | grep -E $width | grep -E $height | grep -E "$fps" >> $dlog ; then
+				# encoder format matches *and* frame size matches *and* fps matches
+				result="xraw $d $format $width $height $fps"
+				LOG NATIVE $result
+			elif grep -E ${gst[videoscale_formats]} /tmp/format.$$ | grep -E $width | grep -E $height | grep -E "$fps" >> $dlog ; then
+				# encode format can be converted and frame size matches *and* fps matches
+				str=$(cat /tmp/format.$$ | grep -E ${gst[videoscale_formats]} | grep -E $width | grep -E $height | grep -E "$fps" | head -1)
+				format=$(parse "$str" format)
+				width=$width
+				height=$height
+				fps=$(parse "$str" framerate ${config[fps]})
+				result="xraw $d $format $width $height $fps"
+				LOG SCALE $result
+				echo "*** scale result=$result" >> $dlog
+			elif grep -E ${gst[videoscale_formats]} /tmp/format.$$ >> $dlog && ${enable[scale]} ; then
+				# encode format can be converted and frame size matches - need to discover source parameters
+				echo "*** trying ${gst[videoscale_formats]}" >> $dlog
+				for f in $(IFS='|';echo ${gst[videoscale_formats]}) ; do
+					LOG DEBUG try $f
+					str=$(cat /tmp/format.$$ | grep -E $f | head -1)
+					format=$(parse "$str" format)
+					width=$(parse "$str" width)
+					height=$(parse "$str" height)
+					fps=$(parse "$str" framerate ${config[fps]})
+					# reject any entry with missing parameters
+					if [ -z "$format" -o -z "$width" -o -z "$height" -o -z "$fps" ] ; then continue ; fi
+					# NB: prefer matching framerate->aspect ratio
+					if [ "$fps" == "${config[fps]}" ] ; then
+						LOG DEBUG select $format $width x $height because $fps fps matches
+						result="xraw $d $format $width $height $fps"
+						break
+					elif [ $(( $width*100/$height )) -eq $(( ${config[width]}*100/${config[height]} )) ] ; then
+						LOG DEBUG select $format $width x $height @ $fps because aspect ratio matches
+						result="xraw $d $format $width $height $fps"
+						break
+					# NB: this implies that the last viable format wins...
+					else
+						echo "*** keeping $format $width x $height @ $fps" >> $dlog
+						result="xraw $d $format $width $height $fps"
+					fi
 				done
-				LOG XRAW=$d I420 $width/${config[width]} $height/${config[height]}
-				result="xraw $d true $width $height"
+				if [ -z "$result" ] ; then
+					LOG DEBUG skip $d because not able to match format and frame size
 			else
-				LOG DEBUG skip $d because no mode with image $width x $height exists
+					LOG TRANSFORM $result
+				fi
+			else
+				echo "*** encoder_formats=${gst[encoder_formats]}" >> $dlog
+				echo "*** videoscale_formats=${gst[videoscale_formats]}" >> $dlog
+				LOG DEBUG skip $d because no mode with image $width x $height exists or scaling disabled
 			fi
 		fi
 	fi
@@ -462,40 +497,68 @@ function select_video_device {
 
 declare -A dev
 if [ -z "${config[video_device]}" ] ; then
-	for d in /dev/video* ; do
-		kdtwhds=$(select_video_device $d)
-		if [ -z "$kdtwhds" ] ; then continue ; fi
-		k="$(echo $kdtwhds | cut -f1 -d' ')"
-		d="$(echo $kdtwhds | cut -f2 -d' ')"
-		t="$(echo $kdtwhds | cut -f3 -d' ')"
-		w="$(echo $kdtwhds | cut -f4 -d' ')"
-		h="$(echo $kdtwhds | cut -f5 -d' ')"
-		s="$(echo $kdtwhds | cut -f6 -d' ')"
+	for dev in /dev/video* ; do
+		kdtwhrs=$(select_video_device $dev)
+		if [ -z "$kdtwhrs" ] ; then continue ; fi
+		echo "*** kdtwhrs=$kdtwhrs" >> $dlog
+		k="$(echo $kdtwhrs | cut -f1 -d' ')"
+		d="$(echo $kdtwhrs | cut -f2 -d' ')"
+		t="$(echo $kdtwhrs | cut -f3 -d' ')"
+		w="$(echo $kdtwhrs | cut -f4 -d' ')"
+		h="$(echo $kdtwhrs | cut -f5 -d' ')"
+		r="$(echo $kdtwhrs | cut -f6 -d' ')"
+		s="$(echo $kdtwhrs | cut -f7 -d' ')"
 		dev[$k]=$d
-		enable[transform]=$t
+		config[source_format]=$t
 		config[source_width]=$w
 		config[source_height]=$h
+		config[source_fps]=$r
 		if [ "$s" == "stop" ] ; then break ; fi
 		LOG DEBUG continue to consider other devices
 	done
 else
 	# script desires to use a particular device path
-	kdtwhds=$(select_video_device ${config[video_device]})
-	if [ -z "$kdtwhds" ] ; then
+	kdtwhrs=$(select_video_device ${config[video_device]})
+	if [ -z "$kdtwhrs" ] ; then
 		LOG DEBUG ${config[video_device]} not suitable
 		# exit 1
-		kdtwhds="test none false ${config[width]} ${config[height]}"
+		kdtwhrs="test none false ${config[width]} ${config[height]}"
 	fi
-	k="$(echo $kdtwhds | cut -f1 -d' ')"
-	d="$(echo $kdtwhds | cut -f2 -d' ')"
-	t="$(echo $kdtwhds | cut -f3 -d' ')"
-	w="$(echo $kdtwhds | cut -f4 -d' ')"
-	h="$(echo $kdtwhds | cut -f5 -d' ')"
-	s="$(echo $kdtwhds | cut -f6 -d' ')"
+	echo "*** kdtwhrs=$kdtwhrs" >> $dlog
+	k="$(echo $kdtwhrs | cut -f1 -d' ')"
+	d="$(echo $kdtwhrs | cut -f2 -d' ')"
+	t="$(echo $kdtwhrs | cut -f3 -d' ')"
+	w="$(echo $kdtwhrs | cut -f4 -d' ')"
+	h="$(echo $kdtwhrs | cut -f5 -d' ')"
+	r="$(echo $kdtwhrs | cut -f6 -d' ')"
+	s="$(echo $kdtwhrs | cut -f7 -d' ')"
 	dev[$k]=$d
-	enable[transform]=$t
+	config[source_format]=$t
 	config[source_width]=$w
 	config[source_height]=$h
+	config[source_fps]=$r
+fi
+
+if [ ! -z "${config[source_fps]}" -a $(( ${config[fps]} )) -ne $(( ${config[source_fps]} )) ] ; then
+	qmst=$(( (2000/${config[source_fps]}) + (1000/${config[fps]}) + 1 ))
+fi
+LOG DEBUG qmst@dev=$qmst
+
+# RTMP to ${URL}/${SKEY}
+# NB: it seems that one of the keys to getting audio/video interleaving is to put
+#     the flvmux into its own gstreamer thread and not making it part of the video pipeline
+#     Also, latency needs to be specified
+if ${enable[rtmp]} ; then
+	if [ -z "${USERNAME}" -o -z "${KEY}" ] ; then
+		gst[avsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]} live=1 flashver=FME/3.0%20(compatible;%20FMSc%201.0)\""
+	else
+		gst[avsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]}?username=${USERNAME}&password=${KEY}\""
+	fi
+elif ${enable[udp]} ; then
+	gst[avsink]="$(rtpmux) ! udpsink ${udp[props]}"
+else
+	# must instantiate a mux that has sink templates of .sink_0 and .sink_1 (like for UDP)
+	gst[avsink]="$(rtpmux) ! fakesink"
 fi
 
 # audio devices
@@ -576,51 +639,55 @@ function transformer {
 if [ ! -z "${dev[h264]}" ] ; then
 	sourceinfo="H.264 ${dev[h264]} ${config[width]} ${config[height]} ${config[fps]}"
 	gst[sourcepipeline]="$(videosource h264 ${dev[h264]})"
+	# TODO: if enable[h265], it means we need to transcode h264->h265, which is silly, but if thats what is wanted...
+	gst[encoder]=""
 elif [ ! -z "${dev[mjpg]}" ] ; then
 	sourceinfo="MJPG ${dev[mjpg]} ${config[width]} ${config[height]} ${config[fps]}"
-	gst[sourcepipeline]="$(videosource mjpg ${dev[mjpg]}) ! $(mjpgargs ${config[width]} ${config[height]} ${config[fps]}) ! jpegdec ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420) ! ${gst[encoder]}"
+	gst[sourcepipeline]="$(videosource mjpg ${dev[mjpg]}) ! $(mjpgargs ${config[width]} ${config[height]} ${config[fps]}) ! jpegdec ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420)"
 elif [ -z "${config[source_width]}" ] || [ -z "${config[source_height]}" ] ; then
 	LOG NO Source available - test pipeline enabled
 	sourceinfo="TEST ${config[width]} ${config[height]} ${config[fps]}"
 	gst[sourcepipeline]="$(videosource test) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420)"
 	if ! ${enable[snow]} ; then gst[sourcepipeline]="${gst[sourcepipeline]} ! $(overlay ${config[width]} ${config[height]} ${config[fps]} overlay ${gst[encoder]})" ; fi
-	gst[sourcepipeline]="${gst[sourcepipeline]} ! ${gst[encoder]}"
+	gst[sourcepipeline]="${gst[sourcepipeline]}"
 elif [ ! -z "${dev[xraw]}" ] ; then
 	config_width=$(( ${config[width]} ))
 	config_height=$(( ${config[height]} ))
+	config_fps=$(( ${config[fps]} ))
+	source_format=$(( ${config[source_format]} ))
 	source_width=$(( ${config[source_width]} ))
 	source_height=$(( ${config[source_height]} ))
-	if [ $config_width -ne $source_width -o $config_height -ne $source_height ] || ${enable[transform]} ; then
-		# for USB2.0, cameras cannot emit 1080p@30fps/720p@30fps so we pull 640x???@30fps and upscale
-		# NB: videoconvert should negotiate optimally so a camera that can emit I420 will be slightly more efficient
-		sourceinfo="XRAW ${dev[xraw]} ${config[source_width]}>${config[width]} ${config[source_height]}>${config[height]} ${config[fps]}"
-		# HACK for BOSON 60/30 fps camera
-		if [ $source_width -eq 640 -a $source_height -eq 512 -a $fps -ne 30 ] ; then
-			LOG BOSON 30/$fps rate adjustment
-			gst[videorate]="videorate max-rate=$fps skip-to-first=true"
-			gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[source_width]} ${config[source_height]} 30/1) ! ${gst[videorate]}"
-		else
-			gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[source_width]} ${config[source_height]} ${config[fps]})"
-		fi
-		if ${enable[transform]} ; then
-			sourceinfo="$sourceinfo (transformed)"
-			gst[sourcepipeline]="${gst[sourcepipeline]} ! $(transformer ${config[width]} ${config[height]} ${config[fps]} I420)"
-		fi
-		gst[sourcepipeline]="${gst[sourcepipeline]} ! ${gst[encoder]}"
-	else
+	source_fps=$(( ${config[source_fps]} ))
+	if [ $config_width -eq $source_width -a $config_height -eq $source_height -a $config_fps -eq $source_fps ] ; then
 		sourceinfo="XRAW ${dev[xraw]} ${config[width]} ${config[height]} ${config[fps]}"
 		if [[ ${gst[encoder]} =~ .*v4l2h264enc.* ]] ; then
 			# for v4l2h264enc use, do not give I420 format to v4l2src
-			gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[encoder]}"
+			gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]})"
 		else
-			gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420) ! ${gst[encoder]}"
+			gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420)"
 		fi
+		sourceinfo="XRAW ${dev[xraw]} ${config[width]} ${config[height]} ${config[fps]}"
+		else
+		gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[source_width]} ${config[source_height]} ${config[source_fps]} ${config[source_format]})"
+		sourceinfo="XRAW ${dev[xraw]} (${config[source_format]} ${config[source_width]} ${config[source_height]} ${config[source_fps]}) -> (I420 ${config[width]} ${config[height]} ${config[fps]})"
+		# for USB2.0, cameras cannot emit 1080p@30fps/720p@30fps so we pull 640x???@30fps and upscale
+		if [ $source_fps -ne $config_fps ] ; then
+			LOG SOURCE ${source_fps}/${config_fps} rate adjustment
+			gst[videorate]="videorate max-rate=${config_fps} skip-to-first=true"
+			gst[sourcepipeline]="${gst[sourcepipeline]} ! ${gst[videorate]}"
+		fi
+		# NB: videoconvert should negotiate optimally so a camera that can emit I420 will be slightly more efficient
+		if [ $source_width -ne $config_width -o $source_height -ne $config_height ] ; then
+			LOG SOURCE ${source_width}x${source_height}/${config_width}x${config_height} transform adjustment
+			gst[sourcepipeline]="${gst[sourcepipeline]} ! $(transformer ${config[width]} ${config[height]} ${config[fps]} I420)"
+		fi
+		gst[sourcepipeline]="${gst[sourcepipeline]}"
 	fi
 else
 	sourceinfo="TEST ${config[width]} ${config[height]} ${config[fps]}"
 	gst[sourcepipeline]="$(videosource test) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420)"
 	if ! ${enable[snow]} ; then gst[sourcepipeline]="${gst[sourcepipeline]} ! $(overlay ${config[width]} ${config[height]} ${config[fps]} overlay ${gst[encoder]})" ; fi
-	gst[sourcepipeline]="${gst[sourcepipeline]} ! ${gst[encoder]}"
+	gst[sourcepipeline]="${gst[sourcepipeline]}"
 fi
 
 # perform a speedtest before launching the pipeline if so configured
@@ -653,15 +720,21 @@ fi
 # http://gstreamer-devel.966125.n4.nabble.com/Does-Gstreamer-has-a-element-that-can-split-one-stream-into-two-td966351.html
 # https://serverfault.com/a/975753
 # https://stackoverflow.com/questions/59085054/gstreamer-issue-with-adding-timeoverlay-on-rtmp-stream
-if ${enable[debug]} ; then gst[command]="" ; else gst[command]="gst-launch-1.0" ; fi
-if [ -z "${gst[filesink]}" ] ; then
-    gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(encoder_args ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[avsink]} ${gst[audiopipeline]}"
-else
-    gst[command]="${gst[command]} ${gst[sourcepipeline]} ! $(encoder_args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}"
+if ${enable[debug]} ; then
+	gst[command]=""
+	if ${enable[srcpipe]} ; then gst[command]="${gst[command]} ${gst[sourcepipeline]} !" ; fi
+	if ${enable[encpipe]} ; then gst[command]="${gst[command]} ${gst[encoder]} ! $(encoder_args ${config[width]} ${config[height]} ${config[fps]}) !" ; fi
+	if ${enable[snkpipe]} ; then gst[command]="${gst[command]} ${gst[avsink]}" ; fi
+	# NB: this is the only place where stdout is written to, so that the output of this script is a gstreamer pipeline
+	echo "${gst[command]}"
+	exit 0
 fi
-# NB: this is the only place where stdout is written to, so that the output of this script is a gstreamer pipeline
-echo "${gst[command]}"
-if ${enable[debug]} ; then exit 0 ; fi
+gst[command]="gst-launch-1.0"
+if [ -z "${gst[filesink]}" ] ; then
+	gst[command]="${gst[command]} ${gst[sourcepipeline]} ! ${gst[encoder]} ! $(encoder_args ${config[width]} ${config[height]} ${config[fps]}) ! ${gst[avsink]} ${gst[audiopipeline]}"
+else
+	gst[command]="${gst[command]} ${gst[sourcepipeline]} ! ${gst[encoder]} ! $(encoder_args ${config[width]} ${config[height]} ${config[fps]}) ! tee name=t t. ! ${gst[avsink]} t. ! ${gst[filesink]} ${gst[audiopipeline]}"
+fi
 echo "${gst[command]}"  > ${LOGDIR}/gst.cmd.$$
 LOG BEGIN $sourceinfo ${config[kbps]} kbps ${LOGDIR}/gst.cmd.$$
 if ! source ${LOGDIR}/gst.cmd.$$ ; then
