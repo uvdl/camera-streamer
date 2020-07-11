@@ -1,8 +1,10 @@
 @echo off
 @rem get gstreamer from https://gstreamer.freedesktop.org/documentation/installing/on-windows.html
 @rem I used 'gstreamer-1.0-msvc-x86_64-1.15.90'
-set PATH=%GSTREAMER_1_0_ROOT_X86_64%\bin;%PATH%
-set GST_PLUGIN_PATH_1_0=%GSTREAMER_1_0_ROOT_X86_64%\lib\gstreamer-1.0
+@rem https://superuser.com/questions/480238/cmd-append-to-path-without-duplicating-it
+echo %PATH%|find /i "%GSTREAMER_1_0_ROOT_X86_64%bin">nul || set PATH=%GSTREAMER_1_0_ROOT_X86_64%bin;%PATH%
+@rem set GST_PLUGIN_PATH_1_0=%GSTREAMER_1_0_ROOT_X86_64%\lib\gstreamer-1.0
+set GST_PLUGIN_PATH_1_0="C:\Program Files\Horizon31 GCS\gstreamer-plugins"
 @rem defaults if when no arguments are given (I like arguments because it makes testing easier)
 set DEFAULT_VIDEO_PORT=5600
 set DEFAULT_AUDIO_PORT=0
