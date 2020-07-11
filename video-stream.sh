@@ -10,17 +10,20 @@
 #   FLAGS: overrides a list of flags to enable
 #     audio - enable audio source multiplexing
 #     debug - perform a dry-run and only report the pipeline that would be executed
+#     encpipe - (with debug) emit only the encoding pipeline
 #     encd - prefer H.264/H.265 source from camera
 #     h264 - make output stream be H.264
 #     h265 - make output stream be H.265
-#     mjpg - fallback to Motion JPEG
+#     mjpg - select Motion JPEG source input
 #     preview - render outgoing stream on local framebuffer
 #     progressreport - inject a progress report on the preview stream
 #     rtmp - enable rtmp output (to the WAN)
 #     scale - allow (up) scaling to reduce data rate from camera to encoder
 #     single - allow either rtmp or udp not both
+#     snkpipe - (with debug) emit only the streaming pipeline
 #     snow - use random data for video when no suitable camera is found
 #     speedtest - test and document upstream WAN bandwidth before starting stream (depends on wan enable)
+#     srcpipe - (with debug) emit only the (camera) source pipeline
 #     udp - enable UDP output to LAN
 #     wan - enable operations on wide-area-networks (internet)
 #     xraw - fallback to RAW video (NB: may be bandwidth limited if using USB)
