@@ -111,10 +111,10 @@ gst[videoscale_formats]='RGBA|BGRx|NV12|UYVY|YVYU|YUY2|GRAY8|I420'	# NB: increas
 
 # Select which encoders are possible
 if [ -z "${config[video_scalers]}" ] ; then
-    if [ "${PLATFORM}" == "IMX6" ] ; then
+	if [ "${PLATFORM}" == "IMX6" ] ; then
 	   config[video_scalers]="imxipuvideotransform"
-	elif [ "${PLATFORM}" == "NVID" ] ; then
-		config[video_scalers]="nvvidconv"
+	#elif [ "${PLATFORM}" == "NVID" ] ; then
+	#	config[video_scalers]="nvvidconv"
 	fi
 fi
 if [ -z "${config[video_encoders]}" ] ; then
