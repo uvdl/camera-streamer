@@ -106,7 +106,7 @@ fi
 # gstreamer pipeline segments
 declare -A gst
 gst[version]=$(gst-launch-1.0 --version | head -1)
-gst[videoscale]="videoscale"
+gst[videoscale]="videoscale method=bilinear"
 gst[videoscale_formats]='RGBA|BGRx|NV12|UYVY|YVYU|YUY2|GRAY8|I420'	# NB: increasing priority (highest last)
 
 # Select which encoders are possible
@@ -192,7 +192,7 @@ elif [ "${PLATFORM}" == "NVID" ] ; then
 	elif [ "${config[video_rate]}" == "variable" ] ; then
 		encoder[omxh264enc]="${encoder[omxh264enc]} control-rate=variable-skip-frames"
 	fi
-	scaler[nvvidconv]="nvvidconv output-buffers=1"
+	scaler[nvvidconv]="nvvidconv interpolation-method=Bilinear output-buffers=1"
 	scaler_formats[nvvidconv]='RGBA|BGRx|NV12|UYVY|YVYU|YUY2|GRAY8|I420'	# NB: increasing priority (highest last)
 fi
 
@@ -440,6 +440,7 @@ function select_video_device {
 			width=${config[width]}
 			height=${config[height]}
 			fps=${config[fps]}
+			# for USB2.0, cameras cannot emit 1080p@30fps/720p@30fps so we pull 640x???@30fps and upscale
 			if ${enable[scale]} && [ ${height/.*} -gt 480 ] ; then width=$(( $width/2 )) ; height=$(( $height/2 )) ; fi
 			echo "*** searching for $width x $height @ $fps" >> $dlog
 			if grep -E ${gst[encoder_formats]} /tmp/format.$$ | grep -E $width | grep -E $height | grep -E "$fps" >> $dlog ; then
@@ -628,13 +629,40 @@ function videosource {
 	echo $result
 }
 
+# https://stackoverflow.com/questions/4069188/how-to-pass-an-associative-array-as-argument-to-a-function-in-bash
 function transformer {
-	local result="${gst[videoscale]}"
-	if [[ ${gst[videoscale]} =~ .*imxipuvideotransform.* ]] ; then
-		# https://github.com/Freescale/gstreamer-imx/issues/27
-		#result="${gst[videoscale]} ! $(xrawargs $1 $2 $3 Y444) ! videoconvert ! $(xrawargs $1 $2 $3 $4)"
-		result="${gst[videoscale]} ! $(xrawargs $1 $2 $3 $4)"
+	local pfx=$1
+	local -n cf=$2
+	local result=""
+	local config_format=$3
+	#local config_width=$(( ${cf[width]} ))
+	#local config_height=$(( ${cf[height]} ))
+	#local config_fps=$(( ${cf[fps]} ))
+	#local source_format=${cf[source_format]}
+	#local source_width=$(( ${cf[source_width]} ))
+	#local source_height=$(( ${cf[source_height]} ))
+	#local source_fps=$(( ${cf[source_fps]} ))
+
+	# perform COLORSPACE->VIDEORATE->VIDEOSCALE conversions separately
+	if [ "${cf[source_format]}" != "$config_format" ] ; then
+		LOG SOURCE ${cf[source_format]} videoconvert $config_format
+		result="$result videoconvert name=${pfx}-format ! $(xrawargs ${cf[source_width]} ${cf[source_height]} ${cf[source_fps]} $config_format) !"
 	fi
+	if [ $(( ${cf[source_fps]} )) -ne $(( ${cf[fps]} )) ] ; then
+		LOG SOURCE ${cf[source_fps]} videorate ${cf[fps]}
+		result="$result videorate name=${pfx}-rate max-rate=$(( ${cf[fps]} )) skip-to-first=true ! $(xrawargs ${cf[source_width]} ${cf[source_height]} ${cf[fps]} $config_format) !"
+	fi
+	if [ $(( ${cf[source_width]} )) -ne $(( ${cf[width]} )) -o $(( ${cf[source_height]} )) -ne $(( ${cf[height]} )) ] ; then
+		LOG SOURCE ${cf[source_width]}x${cf[source_height]} ${gst[videoscale]} ${cf[width]}x${cf[height]}
+		if [[ ${gst[videoscale]} =~ .*imxipuvideotransform.* ]] ; then
+			# https://github.com/Freescale/gstreamer-imx/issues/27
+			#result="$result ${gst[videoscale]} ! $(xrawargs ${cf[width]} ${cf[height]} ${cf[fps]} Y444) ! videoconvert"
+			result="$result ${gst[videoscale]} name=${pfx}-scale !"
+		else
+			result="$result ${gst[videoscale]} name=${pfx}-scale !"
+		fi
+	fi
+	result="$result $(xrawargs ${cf[width]} ${cf[height]} ${cf[fps]} $config_format)"
 	echo $result
 }
 
@@ -654,15 +682,14 @@ elif [ -z "${config[source_width]}" ] || [ -z "${config[source_height]}" ] ; the
 	if ! ${enable[snow]} ; then gst[sourcepipeline]="${gst[sourcepipeline]} ! $(overlay ${config[width]} ${config[height]} ${config[fps]} overlay ${gst[encoder]})" ; fi
 	gst[sourcepipeline]="${gst[sourcepipeline]}"
 elif [ ! -z "${dev[xraw]}" ] ; then
-	config_width=$(( ${config[width]} ))
-	config_height=$(( ${config[height]} ))
-	config_fps=$(( ${config[fps]} ))
-	source_format=$(( ${config[source_format]} ))
-	source_width=$(( ${config[source_width]} ))
-	source_height=$(( ${config[source_height]} ))
-	source_fps=$(( ${config[source_fps]} ))
-	if [ $config_width -eq $source_width -a $config_height -eq $source_height -a $config_fps -eq $source_fps ] ; then
-		sourceinfo="XRAW ${dev[xraw]} ${config[width]} ${config[height]} ${config[fps]}"
+	#config_width=$(( ${config[width]} ))
+	#config_height=$(( ${config[height]} ))
+	#config_fps=$(( ${config[fps]} ))
+	#source_format=$(( ${config[source_format]} ))
+	#source_width=$(( ${config[source_width]} ))
+	#source_height=$(( ${config[source_height]} ))
+	#source_fps=$(( ${config[source_fps]} ))
+	if [ $(( ${config[width]} )) -eq $(( ${config[source_width]} )) -a $(( ${config[height]} )) -eq $(( ${config[source_height]} )) -a $(( ${config[fps]} )) -eq $(( ${config[source_fps]} )) ] ; then
 		if [[ ${gst[encoder]} =~ .*v4l2h264enc.* ]] ; then
 			# for v4l2h264enc use, do not give I420 format to v4l2src
 			gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]})"
@@ -670,21 +697,11 @@ elif [ ! -z "${dev[xraw]}" ] ; then
 			gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420)"
 		fi
 		sourceinfo="XRAW ${dev[xraw]} ${config[width]} ${config[height]} ${config[fps]}"
-		else
+	else
+
 		gst[sourcepipeline]="$(videosource xraw ${dev[xraw]}) ! $(xrawargs ${config[source_width]} ${config[source_height]} ${config[source_fps]} ${config[source_format]})"
 		sourceinfo="XRAW ${dev[xraw]} (${config[source_format]} ${config[source_width]} ${config[source_height]} ${config[source_fps]}) -> (I420 ${config[width]} ${config[height]} ${config[fps]})"
-		# for USB2.0, cameras cannot emit 1080p@30fps/720p@30fps so we pull 640x???@30fps and upscale
-		if [ $source_fps -ne $config_fps ] ; then
-			LOG SOURCE ${source_fps}/${config_fps} rate adjustment
-			gst[videorate]="videorate max-rate=${config_fps} skip-to-first=true"
-			gst[sourcepipeline]="${gst[sourcepipeline]} ! ${gst[videorate]}"
-		fi
-		# NB: videoconvert should negotiate optimally so a camera that can emit I420 will be slightly more efficient
-		if [ $source_width -ne $config_width -o $source_height -ne $config_height ] ; then
-			LOG SOURCE ${source_width}x${source_height}/${config_width}x${config_height} transform adjustment
-			gst[sourcepipeline]="${gst[sourcepipeline]} ! $(transformer ${config[width]} ${config[height]} ${config[fps]} I420)"
-		fi
-		gst[sourcepipeline]="${gst[sourcepipeline]}"
+		gst[sourcepipeline]="${gst[sourcepipeline]} ! $(transformer input config I420)"
 	fi
 else
 	sourceinfo="TEST ${config[width]} ${config[height]} ${config[fps]}"
