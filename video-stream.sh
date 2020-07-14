@@ -81,6 +81,17 @@ udp[host]=${UDP_HOST} ; if [ -z "${udp[host]}" ] ; then udp[host]=224.1.1.1 ; fi
 udp[iface]=${UDP_IFACE} ; if [ -z "${udp[iface]}" ] ; then udp[iface]=eth0 ; fi
 udp[port]=${UDP_PORT} ; if [ -z "${udp[port]}" ] ; then udp[port]=5600 ; fi
 udp[ttl]=${UDP_TTL} ; if [ -z "${udp[ttl]}" ] ; then udp[ttl]=10 ; fi
+
+function udpprops {
+	local host=$1
+	local port=$2
+	local result="host=$host port=$port"
+	if [ ${host/.*} -ge 224 -a ${host/.*} -le 239 ] ; then
+		result="$result multicast-iface=${udp[iface]} auto-multicast=true ttl=${udp[ttl]}"
+	fi
+	echo $result
+}
+
 # Need to add multicast-iface if multicasting...
 if [ ${udp[host]/.*} -ge 224 -a ${udp[host]/.*} -le 239 ] ; then
 	udp[props]="host=${udp[host]} port=${udp[port]} multicast-iface=${udp[iface]} auto-multicast=true ttl=${udp[ttl]}"
@@ -89,7 +100,7 @@ else
 fi
 
 # defaults and flags
-_FLG="audio,debug,encpipe,encd,h264,h265,mjpg,preview,progressreport,rtmp,scale,single,snkpipe,snow,speedtest,srcpipe,udp,wan,xraw"
+_FLG="audio,debug,encpipe,encd,flv,h264,h265,mjpg,preview,progressreport,rtmp,rtp,scale,single,snkpipe,snow,speedtest,srcpipe,ts,udp,wan,xraw"
 declare -A enable
 for k in $(IFS=',';echo $_FLG) ; do
 	if [ -z "$(echo ${config[flags]} | grep -E $k)" ] ; then enable[$k]=false ; else enable[$k]=true ; fi
@@ -252,19 +263,10 @@ fi
 
 # Common parts for gst spells
 function flvmux {
-    # BEWARE: flvmux is reported to not support h.265
+	# BEWARE: flvmux is reported to not support h.265
 	local result="$(timequeue $qmst leaky=upstream) ! mux.video flvmux streamable=true name=mux"
+	# NB: the flvmux on the RPi needs a latency specification that the iMX6/NVIDA do not
 	if [ "${PLATFORM}" == "RPIX" ] ; then result="$result latency=$(($qmst * ${config[flvmux_ratio]} * 1000000))" ; fi
-	echo $result
-}
-function rtpmux {
-	local result="$(timequeue $qmst leaky=upstream)"
-	if ${enable[h265]} ; then
-		result="$result ! rtph265pay config-interval=10 pt=96"
-	elif ${enable[h264]} ; then
-		result="$result ! rtph264pay config-interval=10 pt=96"
-	fi
-	result="$result ! mux.sink_0 rtpmux name=mux"
 	echo $result
 }
 function encoder_args {
@@ -558,10 +560,36 @@ if ${enable[rtmp]} ; then
 		gst[avsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]}?username=${USERNAME}&password=${KEY}\""
 	fi
 elif ${enable[udp]} ; then
-	gst[avsink]="$(rtpmux) ! udpsink ${udp[props]}"
+	if ${enable[rtp]} && ${enable[ts]} ; then
+		gst[avsink]="tee name=x x. ! $(timequeue $qmst leaky=upstream)"
+		if ${enable[h265]} ; then
+			gst[avsink]="${gst[avsink]} ! rtph265pay config-interval=10 pt=96"
+		elif ${enable[h264]} ; then
+			gst[avsink]="${gst[avsink]} ! rtph264pay config-interval=10 pt=96"
+		fi
+		gst[avsink]="${gst[avsink]} ! mux.sink_0 rtpmux name=mux ! udpsink $(udpprops ${udp[host]} ${udp[port]})"
+		gst[avsink]="${gst[avsink]} x. ! $(timequeue $qmst leaky=upstream)"
+		gst[avsink]="${gst[avsink]} ! tsmux.sink_0 mpegtsmux name=tsmux ! udpsink $(udpprops ${udp[host]} $(( ${udp[port]}+2 )) )"
+	elif ${enable[ts]} ; then
+		gst[avsink]="$(timequeue $qmst leaky=upstream)"
+		gst[avsink]="${gst[avsink]} ! tsmux.sink_0 mpegtsmux name=tsmux ! udpsink $(udpprops ${udp[host]} $(( ${udp[port]}+2 )) )"
+	else
+		gst[avsink]="$(timequeue $qmst leaky=upstream)"
+		if ${enable[h265]} ; then
+			gst[avsink]="${gst[avsink]} ! rtph265pay config-interval=10 pt=96"
+		elif ${enable[h264]} ; then
+			gst[avsink]="${gst[avsink]} ! rtph264pay config-interval=10 pt=96"
+		fi
+		gst[avsink]="${gst[avsink]} ! mux.sink_0 rtpmux name=mux ! udpsink $(udpprops ${udp[host]} ${udp[port]})"
+	fi
 else
 	# must instantiate a mux that has sink templates of .sink_0 and .sink_1 (like for UDP)
-	gst[avsink]="$(rtpmux) ! fakesink"
+	# either TS or RTP can do that
+	if ${enable[ts]} ; then
+		gst[avsink]="mux.sink_0 mpegtsmux name=mux ! fakesink"
+	else
+		gst[avsink]="mux.sink_0 rtpmux name=mux ! fakesink"
+	fi
 fi
 
 # audio devices
