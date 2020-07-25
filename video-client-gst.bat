@@ -72,7 +72,7 @@ if "%VIDEO_ENCD%" == "H265" set "VIDEO_DEPAY=rtph265depay ! h265parse ! queue"
 	@if /I "%OCTET%" LEQ "239 " (
 		echo "Multicast"
 		@rem set UDPSRC=udpsrc address=%UDP_IP% multicast-iface="%MCAST_IFACE%" auto-multicast=true
-		set UDPSRC=udpsrc uri=udp://%UDP_IP%:
+		set UDPSRC=udpsrc multicast-iface="%MCAST_IFACE%" auto-multicast=true uri=udp://%UDP_IP%:
 	) else (
 		echo "Unicast greater than 239."
 		set UDPSRC=udpsrc address=%UDP_IP% port=
