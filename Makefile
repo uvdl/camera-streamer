@@ -2,15 +2,16 @@
 
 SHELL := /bin/bash
 SUDO := $(shell test $${EUID} -ne 0 && echo "sudo")
+# https://stackoverflow.com/questions/41302443/in-makefile-know-if-gnu-make-is-in-dry-run
+DRY_RUN := $(if $(findstring n,$(firstword -$(MAKEFLAGS))),--dry-run)
 .EXPORT_ALL_VARIABLES:
 
-PKGDEPS=automake host libtool pkg-config libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libglib2.0-dev libjson-glib-dev gtk-doc-tools libreadline-dev libncursesw5-dev libdaemon-dev libjansson-dev sudo uvcdynctrl v4l-utils python3-netifaces python3-pip libsoup2.4-dev
+PKGDEPS=sudo uvcdynctrl v4l-utils python3-netifaces python3-pip
 
 LOCAL=/usr/local
-LOCAL_APPS=gst-client gstd-client gst-client-1.0 gstd internet.py speedtest-cli video-stream.sh stream-monitor.py
+LOCAL_APPS=gst-client gstd-client gst-client-1.0 gstd speedtest-cli
+LOCAL_SCRIPTS=internet.py video-stream.sh stream-monitor.py
 FLAGS ?= "audio,h264,mjpg,rtmp,xraw"
-GSTD=$(LOCAL)/bin/gstd
-GSTD_SRC=$(LOCAL)/src/gstd-1.x
 LIBSYSTEMD=/lib/systemd/system
 PLATFORM ?= $(shell python3 serial_number.py | cut -c1-4)
 RIDGERUN=https://github.com/RidgeRun
@@ -25,25 +26,8 @@ SYSCFG=/etc/systemd/video-stream.conf
 
 .PHONY = clean dependencies disable enable git-cache install provision test uninstall
 
-$(GSTD_SRC): $(LOCAL)/src
-	$(SUDO) chmod a+w $<
-	@if [ ! -d $@ ] ; then cd $(dir $@) && git clone $(RIDGERUN)/$(notdir $@).git -b develop ; fi
-
-$(GSTD): $(GSTD_SRC)
-	@( cd $(GSTD_SRC) && ./autogen.sh && ./configure && make )
-	@( cd $(GSTD_SRC) && $(SUDO) make install )
-
 $(LOCAL)/src:
 	@if [ ! -d $@ ] ; then mkdir -p $@ ; fi
-
-$(LOCAL)/bin/internet.py: internet.py
-	$(SUDO) install -Dm755 $< $@
-
-$(LOCAL)/bin/stream-monitor.py: stream-monitor.py
-	$(SUDO) install -Dm755 $< $@
-
-$(LOCAL)/bin/video-stream.sh: video-stream.sh
-	$(SUDO) install -Dm755 $< $@
 
 $(SPEEDTEST_SRC): $(LOCAL)/src
 	$(SUDO) chmod a+w $<
@@ -114,8 +98,8 @@ clean:
 dependencies:
 	$(SUDO) apt-get update
 	@PLATFORM=$(PLATFORM) ./ensure-gst.sh --dry-run
+	@PLATFORM=$(PLATFORM) ./ensure-gstd.sh --dry-run
 	$(SUDO) apt-get install -y $(PKGDEPS)
-	$(MAKE) --no-print-directory $(GSTD)
 	$(MAKE) --no-print-directory $(SPEEDTEST)
 
 disable:
@@ -132,7 +116,7 @@ git-cache:
 	git config --global credential.helper "cache --timeout=5400"
 
 install: git-cache
-	$(MAKE) --no-print-directory $(GSTD) $(LOCAL)/bin/video-stream.sh $(LOCAL)/bin/stream-monitor.py $(LOCAL)/bin/internet.py $(SPEEDTEST)
+	@for s in $(LOCAL_SCRIPTS) ; do $(SUDO) install -Dm755 $${s} $(LOCAL)/bin/$${s} ; done
 	@for c in stop disable ; do $(SUDO) systemctl $${c} $(SERVICES) ; done ; true
 	@for s in $(SERVICES) ; do $(SUDO) install -Dm644 $${s%.*}.service $(LIBSYSTEMD)/$${s%.*}.service ; done
 	@if [ ! -z "$(SERVICES)" ] ; then $(SUDO) systemctl daemon-reload ; fi
