@@ -156,7 +156,7 @@ case "$(basename $CONF)" in
 		# https://unix.stackexchange.com/questions/79068/how-to-export-variables-that-are-set-all-at-once
 		x=$(tail -n +2 /etc/systemd/audio-streamer.conf) && set -a && eval $x && set +a
 		# now we have the environment settings for audio
-		if [ "${NAME}" == "x" ] ; then
+		if [ "${NAME}" == "x" ] || [ ! -x ./audio-stream.sh ] ; then
 			p1="audiotestsrc wave=white-noise freq=100 is-live=true \
 				! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" \
 				! voaacenc bitrate=128000 ! aacparse ! rtpmp4apay pt=96 \
