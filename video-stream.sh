@@ -463,27 +463,33 @@ function select_video_device {
 				echo "*** trying ${gst[videoscale_formats]}" >> $dlog
 				for f in $(IFS='|';echo ${gst[videoscale_formats]}) ; do
 					LOG DEBUG try $f
-					str=$(cat /tmp/format.$$ | grep -E $f | head -1)
-					format=$(parse "$str" format)
-					width=$(parse "$str" width)
-					height=$(parse "$str" height)
-					fps=$(parse "$str" framerate ${config[fps]})
-					# reject any entry with missing parameters
-					if [ -z "$format" -o -z "$width" -o -z "$height" -o -z "$fps" ] ; then continue ; fi
-					# NB: prefer matching framerate->aspect ratio
-					if [ "$fps" == "${config[fps]}" ] ; then
-						LOG DEBUG select $format $width x $height because $fps fps matches
-						result="xraw $d $format $width $height $fps"
-						break
-					elif [ $(( $width*100/$height )) -eq $(( ${config[width]}*100/${config[height]} )) ] ; then
-						LOG DEBUG select $format $width x $height @ $fps because aspect ratio matches
-						result="xraw $d $format $width $height $fps"
-						break
-					# NB: this implies that the last viable format wins...
-					else
-						echo "*** keeping $format $width x $height @ $fps" >> $dlog
-						result="xraw $d $format $width $height $fps"
-					fi
+					x=$(cat /tmp/format.$$ | awk -v pattern="$f" 'BEGIN{ORS="\n";} $0 ~ pattern')
+					stop=false
+					for str in $x ; do
+						format=$(parse "$str" format)
+						width=$(parse "$str" width)
+						height=$(parse "$str" height)
+						fps=$(parse "$str" framerate ${config[fps]})
+						# reject any entry with missing parameters
+						if [ -z "$format" -o -z "$width" -o -z "$height" -o -z "$fps" ] ; then continue ; fi
+						# NB: prefer matching framerate->aspect ratio
+						if [ "$fps" == "${config[fps]}" ] ; then
+							LOG DEBUG select $format $width x $height because $fps fps matches
+							result="xraw $d $format $width $height $fps"
+							stop=true
+							break
+						elif [ $(( $width*100/$height )) -eq $(( ${config[width]}*100/${config[height]} )) ] ; then
+							LOG DEBUG select $format $width x $height @ $fps because aspect ratio matches
+							result="xraw $d $format $width $height $fps"
+							stop=true
+							break
+						# NB: this implies that the last viable format wins...
+						else
+							echo "*** keeping $format $width x $height @ $fps" >> $dlog
+							result="xraw $d $format $width $height $fps"
+						fi
+					done
+					if $stop ; then break ; fi
 				done
 				if [ -z "$result" ] ; then
 					LOG DEBUG skip $d because not able to match format and frame size
