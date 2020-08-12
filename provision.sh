@@ -175,7 +175,7 @@ case "$(basename $CONF)" in
 		FLAGS=$(value_of FLAGS "h264,xraw,scale,udp")
 		URL=$(value_of URL udp)
 		USERNAME=$(value_of USERNAME $USER)
-		KEY=$(value_of KEY "")
+		IDENT=$(value_of IDENT "")
 		SKEY=$(value_of SKEY $(python3 serial_number.py))
 		if ! $DEFAULTS ; then
 			UDP_HOST=$(interactive "$UDP_HOST" "RJ45 Network IPv4 destination for video")
@@ -184,11 +184,19 @@ case "$(basename $CONF)" in
 			FPS=$(interactive "$FPS" "Video stream frames/sec")
 			VIDEO_BITRATE=$(interactive "$VIDEO_BITRATE" "Video stream bitrate in kbps/sec")
 			FLAGS=$(interactive "$FLAGS" "Video stream flags")
-			x=$(echo $URL | grep mavnet.online) && \
+			URL=$(interactive "$URL" "Video server url, udp or rtmp")
+			x=$(echo $URL | grep rtmp) && \
 			if [ ! -z "$$x" ] ; then
-				USERNAME=$(interactive "$USERNAME" "Username for video server")
-				read -s -p "Password? " KEY ; echo "" ;
-				URL="rtmp://video.mavnet.online:1935/live/ORNL"
+				URL=$(interactive "$(echo $URL" "RTMP server URL, rtmp://xxx:port/path")
+				x=$(echo $URL | grep mavnet.online)
+				if [ -z "$$x" ] ; then
+					# Facebook, YouTube, etc. authenticate via stream-key
+					SKEY=$(interactive "$SKEY" "RTMP server stream key")
+				else
+					# video.mavnet.online authenticates by username
+					USERNAME=$(interactive "$USERNAME" "Username for video server")
+					read -s -p "Password? " IDENT ; echo "" ;
+				fi
 			fi
 		fi
 		echo "[Service]" > /tmp/$$.env && \
@@ -202,7 +210,7 @@ case "$(basename $CONF)" in
 		echo "VIDEO_BITRATE=${VIDEO_BITRATE}" >> /tmp/$$.env && \
 		echo "FLAGS=${FLAGS}" >> /tmp/$$.env && \
 		echo "USERNAME=${USERNAME}" >> /tmp/$$.env && \
-		echo "KEY=${KEY}" >> /tmp/$$.env && \
+		echo "IDENT=${IDENT}" >> /tmp/$$.env && \
 		echo "SKEY=${SKEY}" >> /tmp/$$.env && \
 		echo "URL=${URL}" >> /tmp/$$.env
 		;;

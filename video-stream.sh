@@ -554,10 +554,10 @@ LOG DEBUG qmst@dev=$qmst
 #     the flvmux into its own gstreamer thread and not making it part of the video pipeline
 #     Also, latency needs to be specified
 if ${enable[rtmp]} ; then
-	if [ -z "${USERNAME}" -o -z "${KEY}" ] ; then
+	if [ -z "${USERNAME}" -o -z "${IDENT}" ] ; then
 		gst[avsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]} live=1 flashver=FME/3.0%20(compatible;%20FMSc%201.0)\""
 	else
-		gst[avsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]}?username=${USERNAME}&password=${KEY}\""
+		gst[avsink]="$(flvmux) ! rtmpsink location=\"${config[url]}/${config[streamkey]}?username=${USERNAME}&password=${IDENT}\""
 	fi
 elif ${enable[udp]} ; then
 	gst[avsink]="$(rtpmux) ! udpsink ${udp[props]}"
