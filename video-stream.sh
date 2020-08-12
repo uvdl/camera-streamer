@@ -33,8 +33,10 @@ if [ -z "${LOGDIR}" ] ; then
 	## NB: RUNTIME_DIRECTORY does not seem to be populated as the systemd docs say...
 	##if [ -z "$RUNTIME_DIRECTORY" ] ; then LOGDIR=/tmp ; else LOGDIR=$RUNTIME_DIRECTORY ; fi
 	if [ -d /var/run/video-stream ] ; then LOGDIR=/var/run/video-stream ; else LOGDIR=/tmp/video-stream.$$ ; fi
-else
-	if ! mkdir -p ${LOGDIR} ; then LOGDIR=/tmp/video-stream.$$ ; fi
+fi
+if [ ! -d "${LOGDIR}" ] ; then
+	LOGDIR=/tmp/video-stream.$$
+	mkdir -p ${LOGDIR}
 fi
 log=${LOGDIR}/video.log
 # configuration items (defaults)
