@@ -46,7 +46,7 @@ config[height]=${HEIGHT} ; if [ -z "${config[height]}" ] ; then config[height]=7
 config[fps]=${FPS} ; if [ -z "${config[fps]}" ] ; then config[fps]=30 ; fi
 config[kbps]=${VIDEO_BITRATE} ; if [ -z "${config[kbps]}" ] ; then config[kbps]=1800 ; fi
 config[flags]="${FLAGS}"
-config[audio]="${AUDIO}"                    # device identifier selected from $(aplay -l | grep 'card.*device')
+config[audio]="${AUDIO}"                    # device identifier selected from $(arecord -l | grep 'card.*device')
 config[audio_latency]=${AUDIO_LATENCY_MS}   # override computed latency
 config[video_latency]=${VIDEO_LATENCY_MS}   # override computed latency
 config[audio_encoders]="${AUDIO_ENCODERS}"  # list of audio encoders to use
@@ -574,7 +574,7 @@ fi
 #     correctly match up the time.  This helps to avoid the above send errors.
 # NB: devices constantly move around.  One cannot pick them, rather you have to choose from the list du-jour
 if ${enable[audio]} ; then
-	aplay -l | grep 'card.*device' | grep "${config[audio]}" | while read p || [[ -n $p ]] ; do
+	arecord -l | grep 'card.*device' | grep "${config[audio]}" | while read p || [[ -n $p ]] ; do
 		# BEWARE: this is running in a separate shell, changes to the parent environment do not persist
 		c=$(echo $p | cut -f1 -d, | cut -f1 -d: | cut -f2 -d' ')
 		d=$(echo $p | cut -f2 -d, | cut -f1 -d: | cut -f3 -d' ')
