@@ -184,9 +184,8 @@ case "$(basename $CONF)" in
 			FPS=$(interactive "$FPS" "Video stream frames/sec")
 			VIDEO_BITRATE=$(interactive "$VIDEO_BITRATE" "Video stream bitrate in kbps/sec")
 			FLAGS=$(interactive "$FLAGS" "Video stream flags")
-			URL=$(interactive "$URL" "Video server url, udp or rtmp")
+			URL=$(interactive "$URL" "Video server URL")
 			if [ "$(contains rtmp $URL)" == "yes" ] ; then
-				URL=$(interactive "$(echo "$URL" "RTMP server URL, rtmp://xxx:port/path")
 				if [ "$(contains mavnet.online $URL)" == "yes" ] ; then\
 					# video.mavnet.online authenticates by username
 					USERNAME=$(interactive "$USERNAME" "Username for video server")
