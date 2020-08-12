@@ -185,17 +185,15 @@ case "$(basename $CONF)" in
 			VIDEO_BITRATE=$(interactive "$VIDEO_BITRATE" "Video stream bitrate in kbps/sec")
 			FLAGS=$(interactive "$FLAGS" "Video stream flags")
 			URL=$(interactive "$URL" "Video server url, udp or rtmp")
-			x=$(echo $URL | grep rtmp) && \
-			if [ ! -z "$$x" ] ; then
-				URL=$(interactive "$(echo $URL" "RTMP server URL, rtmp://xxx:port/path")
-				x=$(echo $URL | grep mavnet.online)
-				if [ -z "$$x" ] ; then
-					# Facebook, YouTube, etc. authenticate via stream-key
-					SKEY=$(interactive "$SKEY" "RTMP server stream key")
-				else
+			if [ "$(contains rtmp $URL)" == "yes" ] ; then
+				URL=$(interactive "$(echo "$URL" "RTMP server URL, rtmp://xxx:port/path")
+				if [ "$(contains mavnet.online $URL)" == "yes" ] ; then\
 					# video.mavnet.online authenticates by username
 					USERNAME=$(interactive "$USERNAME" "Username for video server")
 					read -s -p "Password? " IDENT ; echo "" ;
+				else
+					# Facebook, YouTube, etc. authenticate via stream-key
+					SKEY=$(interactive "$SKEY" "RTMP server stream key")
 				fi
 			fi
 		fi
