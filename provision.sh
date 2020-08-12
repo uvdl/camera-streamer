@@ -163,58 +163,6 @@ case "$(basename $CONF)" in
 		echo "" >> /tmp/$$.env
 		;;
 
-	@(	SN=$(shell python3 serial_number.py) && \
-		URL=$(shell $(SUDO) grep URL $(SYSCFG) | cut -f2 -d=) && \
-		SKEY=$(shell $(SUDO) grep SKEY $(SYSCFG) | cut -f2 -d=) && \
-		AUDIO=$(shell $(SUDO) grep AUDIO $(SYSCFG) | cut -f2 -d=) && \
-		LATENCY_MS=$(shell $(SUDO) grep LATENCY_MS $(SYSCFG) | cut -f2 -d=) && \
-		read -p "udp or URL for video server? ($${URL}) " UR && \
-		if [ ! -z "$${UR}" ] ; then URL=$${UR} ; fi ; \
-		if [ -z "$${SKEY}}" ] ; then SKEY=$${SN} ; fi ; \
-		read -p "Stream Key? ($${SKEY}) " SK && \
-		if [ ! -z "$${SK}" ] ; then SKEY=$${SK} ; fi ; \
-		echo "[Service]" > /tmp/$$.env ; \
-		x=$$(echo $$URL | grep mavnet.online) && \
-		if [ ! -z "$$x" ] ; then \
-			USERNAME=$(shell $(SUDO) grep USERNAME $(SYSCFG) | cut -f2 -d=) && \
-			read -p "Username for video server? ($${USERNAME}) " UN && \
-			if [ ! -z "$${UN}" ] ; then USERNAME=$${UN} ; fi ; \
-			read -s -p "Password? " KEY ; echo "" ; \
-			echo "KEY=$${KEY}" >> /tmp/$$.env && \
-			echo "USERNAME=$${USERNAME}" >> /tmp/$$.env && \
-			echo "SERVER=$${SERVER}" >> /tmp/$$.env && \
-			SKEY="$${SN}" && \
-			URL="rtmp://$${SERVER}:$${SERVER_PORT}/$${SERVER_GROUP}" ; \
-		fi ; \
-		if [ "$$URL" == "udp" ] ; then \
-			FLAGS="audio,h264,mjpg,udp,xraw"
-			UDP_IFACE=$(shell $(SUDO) grep UDP_IFACE $(SYSCFG) | cut -f2 -d=) && \
-			UDP_HOST=$(shell $(SUDO) grep UDP_HOST $(SYSCFG) | cut -f2 -d=) && \
-			UDP_PORT=$(shell $(SUDO) grep UDP_PORT $(SYSCFG) | cut -f2 -d=) && \
-			read -p "Network interface device for udp ($${UDP_IFACE}) " UIF && \
-			if [ ! -z "$${UIF}" ] ; then UDP_IFACE=$${UIF} ; fi ; \
-			read -p "UDP port for video stream? ($${UDP_PORT}) " UP && \
-			if [ ! -z "$${UP}" ] ; then UDP_PORT=$${UP} ; fi ; \
-			read -p "UDP address for video stream? ($${UDP_HOST}) " UH && \
-			if [ ! -z "$${UH}" ] ; then UDP_HOST=$${UH} ; fi ; \
-			echo "UDP_IFACE=$${UDP_IFACE}" >> /tmp/$$.env && \
-			echo "UDP_HOST=$${UDP_HOST}" >> /tmp/$$.env && \
-			echo "UDP_PORT=$${UDP_PORT}" >> /tmp/$$.env ; \
-		fi ; \
-		echo "URL=$${URL}" >> /tmp/$$.env && \
-		echo "SKEY=$${SKEY}" >> /tmp/$$.env && \
-		echo "FLAGS=$(FLAGS)" >> /tmp/$$.env && \
-		read -p "Audio Device? ($${AUDIO}) " ADEV && \
-		if [ ! -z "$${ADEV}" ] ; then AUDIO="$${ADEV}" ; fi ; \
-		echo "AUDIO=$${AUDIO}" >> /tmp/$$.env && \
-		read -p "Override Latency (ms)? ($${LATENCY_MS}) " LMS && \
-		if [ ! -z "$${LMS}" ] ; then LATENCY_MS=$${LMS} ; fi ; \
-		echo "LATENCY_MS=$${LATENCY_MS}" >> /tmp/$$.env && \
-		echo "PLATFORM=$(PLATFORM)" >> /tmp/$$.env && \
-		$(SUDO) install -Dm600 /tmp/$$.env $@ ; \
-		rm /tmp/$$.env )
-
-
 	video-stream.conf)
 		# special case of provisioning the single camera streamer
 		UDP_IFACE=$(value_of UDP_IFACE eth0)
@@ -226,6 +174,8 @@ case "$(basename $CONF)" in
 		VIDEO_BITRATE=$(value_of VIDEO_BITRATE 1800)
 		FLAGS=$(value_of FLAGS "h264,xraw,scale,udp")
 		URL=$(value_of URL udp)
+		USERNAME=$(value_of USERNAME $USER)
+		SKEY=$(value_of SKEY $(python3 serial_number.py))
 		if ! $DEFAULTS ; then
 			UDP_HOST=$(interactive "$UDP_HOST" "RJ45 Network IPv4 destination for video")
 			WIDTH=$(interactive "$WIDTH" "Video stream width")
@@ -233,6 +183,12 @@ case "$(basename $CONF)" in
 			FPS=$(interactive "$FPS" "Video stream frames/sec")
 			VIDEO_BITRATE=$(interactive "$VIDEO_BITRATE" "Video stream bitrate in kbps/sec")
 			FLAGS=$(interactive "$FLAGS" "Video stream flags")
+			x=$(echo $URL | grep mavnet.online) && \
+			if [ ! -z "$$x" ] ; then
+				USERNAME=$(interactive "$USERNAME" "Username for video server")
+				read -s -p "Password? " KEY ; echo "" ;
+				URL="rtmp://video.mavnet.online:1935/live/ORNL"
+			fi
 		fi
 		echo "[Service]" > /tmp/$$.env && \
 		echo "PLATFORM=${PLATFORM}" >> /tmp/$$.env && \
@@ -244,6 +200,12 @@ case "$(basename $CONF)" in
 		echo "FPS=${FPS}" >> /tmp/$$.env && \
 		echo "VIDEO_BITRATE=${VIDEO_BITRATE}" >> /tmp/$$.env && \
 		echo "FLAGS=${FLAGS}" >> /tmp/$$.env && \
+		x=$(echo $URL | grep mavnet.online) && \
+		if [ ! -z "$$x" ] ; then \
+			echo "USERNAME=${USERNAME}" >> /tmp/$$.env && \
+			echo "KEY=${KEY}" >> /tmp/$$.env && \
+			echo "SKEY=${SKEY}" >> /tmp/$$.env && \
+		fi ; \
 		echo "URL=${URL}" >> /tmp/$$.env
 		;;
 
