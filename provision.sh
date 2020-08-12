@@ -157,10 +157,7 @@ case "$(basename $CONF)" in
 		x=$(tail -n +2 /etc/systemd/audio-streamer.conf) && set -a && eval $x && set +a
 		# now we have the environment settings for audio
 		if [ "${NAME}" == "x" ] || [ ! -x ./audio-stream.sh ] ; then
-			p1="audiotestsrc wave=white-noise freq=100 is-live=true \
-				! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" \
-				! voaacenc bitrate=128000 ! aacparse ! rtpmp4apay pt=96 \
-				! udpsink name=output host=\$HOST PORT=\$PORT multicast-iface=\$IFACE auto-multicast=true ttl=10"
+			p1="audiotestsrc wave=white-noise freq=100 is-live=true ! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" ! voaacenc bitrate=128000 ! aacparse ! rtpmp4apay pt=96 ! udpsink name=output host=\$\{HOST\} port=\$\{PORT\} multicast-iface=\$\{IFACE\} auto-multicast=true ttl=10"
 		else
 			p1=$(PLATFORM=${PLATFORM} IFACE=${IFACE} HOST=${HOST} NAME=\"${NAME}\" PORT=${PORT} DEBUG=true ./audio-stream.sh 2>/dev/null)
 		fi
