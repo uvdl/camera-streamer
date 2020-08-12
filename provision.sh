@@ -156,7 +156,14 @@ case "$(basename $CONF)" in
 		# https://unix.stackexchange.com/questions/79068/how-to-export-variables-that-are-set-all-at-once
 		x=$(tail -n +2 /etc/systemd/audio-streamer.conf) && set -a && eval $x && set +a
 		# now we have the environment settings for audio
-		p1=$(PLATFORM=${PLATFORM} IFACE=${IFACE} HOST=${HOST} NAME=\"${NAME}\" PORT=${PORT} DEBUG=true ./audio-stream.sh 2>/dev/null)
+		if [ "${NAME}" == "x" ] ; then
+			p1="audiotestsrc wave=white-noise freq=100 is-live=true \
+				! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" \
+				! voaacenc bitrate=128000 ! aacparse ! rtpmp4apay pt=96 \
+				! udpsink name=output host=${HOST} PORT={PORT} multicast-iface=${IFACE} auto-multicast=true ttl=10"
+		else
+			p1=$(PLATFORM=${PLATFORM} IFACE=${IFACE} HOST=${HOST} NAME=\"${NAME}\" PORT=${PORT} DEBUG=true ./audio-stream.sh 2>/dev/null)
+		fi
 		if [ -z "$p1" ] ; then echo "*** Did not produce audio pipeline - STOP" ; exit 1 ; fi
 		echo "#!/bin/bash" > /tmp/$$.env && \
 		echo "gst-launch-1.0 $p1" >> /tmp/$$.env && \
