@@ -48,7 +48,8 @@ $(LOCAL)/bin/audio-streamer.sh:
 
 $(LOCAL)/bin/camera-switcher.sh:
 	$(SUDO) systemctl stop camera-switcher
-	$(SUDO) install -Dm755 ./camera-switcher.sh $@
+	#$(SUDO) install -Dm755 ./camera-switcher.sh $@
+	PLATFORM=$(PLATFORM) ./provision.sh $@ $(DRY_RUN)
 
 $(LOCAL)/src:
 	@if [ ! -d $@ ] ; then mkdir -p $@ ; fi
