@@ -133,8 +133,8 @@ stop-cameras:
 	@for s in $(shell seq 1 3) ; do gst-client pipeline_stop cam$${s} ; done
 
 cam%:
-    $(MAKE) --no-print-directory -B stop-cameras
-    gst-client pipeline_play $@
+	$(MAKE) --no-print-directory -B stop-cameras
+	gst-client pipeline_play $@
 
 /etc/hosts: Makefile
 	@(	URL=$(shell $(SUDO) grep URL $(SYSCFG)/video-stream.conf | cut -f2 -d=) && \
