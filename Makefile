@@ -25,7 +25,7 @@ SYSCFG=/etc/systemd
 
 .PHONY = clean dependencies disable enable git-cache install
 .PHONY = provision provision-audio provision-cameras provision-video
-.PHONY = show-config test uninstall
+.PHONY = show-config stop-cameras test uninstall
 
 default:
 	@echo "Please choose an action:"
@@ -128,6 +128,13 @@ provision-video:
 show-config:
 	@for s in video-stream.service $(SERVICES) ; do echo "*** $${s%.*}.conf ***" && $(SUDO) cat $(SYSCFG)/$${s%.*}.conf ; done
 	@echo "*** cameras ***" && ls -al /dev/cam*
+
+stop-cameras:
+	@for s in $(shell seq 1 3) ; do gst-client pipeline_stop cam$${s} ; done
+
+cam%:
+    $(MAKE) --no-print-directory -B stop-cameras
+    gst-client pipeline_play $@
 
 /etc/hosts: Makefile
 	@(	URL=$(shell $(SUDO) grep URL $(SYSCFG)/video-stream.conf | cut -f2 -d=) && \
