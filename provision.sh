@@ -160,7 +160,7 @@ case "$(basename $CONF)" in
 			p1="audiotestsrc wave=white-noise freq=100 is-live=true \
 				! \"audio/x-raw,format=(string)S16LE,rate=(int)44100,channels=(int)1\" \
 				! voaacenc bitrate=128000 ! aacparse ! rtpmp4apay pt=96 \
-				! udpsink name=output host=${HOST} PORT={PORT} multicast-iface=${IFACE} auto-multicast=true ttl=10"
+				! udpsink name=output host=\$HOST PORT=\$PORT multicast-iface=\$IFACE auto-multicast=true ttl=10"
 		else
 			p1=$(PLATFORM=${PLATFORM} IFACE=${IFACE} HOST=${HOST} NAME=\"${NAME}\" PORT=${PORT} DEBUG=true ./audio-stream.sh 2>/dev/null)
 		fi
