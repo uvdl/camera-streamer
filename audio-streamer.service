@@ -1,0 +1,20 @@
+[Unit]
+Description=Audio Stream
+After=systemd-remount-fs.service network.target nss-lookup.target
+RequiresMountsFor=/etc /usr
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/systemd/audio-streamer.conf
+ExecStart=/usr/local/bin/audio-streamer.sh
+StandardOutput=journal
+StandardError=journal
+Restart=on-failure
+RestartSec=30
+StartLimitInterval=300
+StartLimitBurst=5
+TimeoutStartSec=0
+TimeoutStopSec=5
+
+[Install]
+WantedBy=multi-user.target

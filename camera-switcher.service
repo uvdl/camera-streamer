@@ -1,14 +1,15 @@
 [Unit]
 Description=Network Video Stream
 After=systemd-remount-fs.service network.target nss-lookup.target
-RequiresMountsFor=/usr
+RequiresMountsFor=/etc /usr
 
 [Service]
-Type=simple
+Type=forking
 EnvironmentFile=/etc/systemd/video-stream.conf
-RuntimeDirectory=video-stream
+RuntimeDirectory=camera-switcher
 RuntimeDirectoryMode=0755
-ExecStart=/usr/local/bin/video-stream.sh
+ExecStartPre=/bin/sleep 8
+ExecStart=/usr/local/bin/camera-switcher.sh
 StandardOutput=journal
 StandardError=journal
 Restart=on-failure
