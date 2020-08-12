@@ -175,6 +175,7 @@ case "$(basename $CONF)" in
 		FLAGS=$(value_of FLAGS "h264,xraw,scale,udp")
 		URL=$(value_of URL udp)
 		USERNAME=$(value_of USERNAME $USER)
+		KEY=$(value_of KEY "")
 		SKEY=$(value_of SKEY $(python3 serial_number.py))
 		if ! $DEFAULTS ; then
 			UDP_HOST=$(interactive "$UDP_HOST" "RJ45 Network IPv4 destination for video")
@@ -200,12 +201,9 @@ case "$(basename $CONF)" in
 		echo "FPS=${FPS}" >> /tmp/$$.env && \
 		echo "VIDEO_BITRATE=${VIDEO_BITRATE}" >> /tmp/$$.env && \
 		echo "FLAGS=${FLAGS}" >> /tmp/$$.env && \
-		x=$(echo $URL | grep mavnet.online) && \
-		if [ ! -z "$$x" ] ; then \
-			echo "USERNAME=${USERNAME}" >> /tmp/$$.env && \
-			echo "KEY=${KEY}" >> /tmp/$$.env && \
-			echo "SKEY=${SKEY}" >> /tmp/$$.env && \
-		fi ; \
+		echo "USERNAME=${USERNAME}" >> /tmp/$$.env && \
+		echo "KEY=${KEY}" >> /tmp/$$.env && \
+		echo "SKEY=${SKEY}" >> /tmp/$$.env && \
 		echo "URL=${URL}" >> /tmp/$$.env
 		;;
 
