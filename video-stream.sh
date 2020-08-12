@@ -463,9 +463,10 @@ function select_video_device {
 				echo "*** trying ${gst[videoscale_formats]}" >> $dlog
 				for f in $(IFS='|';echo ${gst[videoscale_formats]}) ; do
 					LOG DEBUG try $f
-					x=$(cat /tmp/format.$$ | awk -v pattern="$f" 'BEGIN{ORS="\n";} $0 ~ pattern')
+					# https://stackoverflow.com/questions/1521462/looping-through-the-content-of-a-file-in-bash
+					cat /tmp/format.$$ | awk -v pattern="$f" 'BEGIN{ORS="\n";} $0 ~ pattern' > /tmp/chk.$$
 					stop=false
-					for str in $x ; do
+					while IFS="" read -r str || [ -n "$str" ] ; do
 						format=$(parse "$str" format)
 						width=$(parse "$str" width)
 						height=$(parse "$str" height)
@@ -488,7 +489,7 @@ function select_video_device {
 							echo "*** keeping $format $width x $height @ $fps" >> $dlog
 							result="xraw $d $format $width $height $fps"
 						fi
-					done
+					done < /tmp/chk.$$
 					if $stop ; then break ; fi
 				done
 				if [ -z "$result" ] ; then
