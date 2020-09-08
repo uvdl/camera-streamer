@@ -111,21 +111,21 @@ gst[videoscale_formats]='RGBA|BGRx|NV12|UYVY|YVYU|YUY2|GRAY8|I420'	# NB: increas
 
 # Select which encoders are possible
 if [ -z "${config[video_scalers]}" ] ; then
-    if [ "${PLATFORM}" == "IMX6" ] ; then
-	   config[video_scalers]="imxipuvideotransform"
+	if [ "${PLATFORM}" == "IMX6" ] ; then
+		config[video_scalers]="imxipuvideotransform"
 	elif [ "${PLATFORM}" == "NVID" ] ; then
 		config[video_scalers]="nvvidconv"
 	fi
 fi
 if [ -z "${config[video_encoders]}" ] ; then
-    if ${enable[h265]} ; then
-        config[video_encoders]="imxvpuenc_h265,omxh265enc,x265enc"
-    elif ${enable[h264]} ; then
-        config[video_encoders]="imxvpuenc_h264,omxh264enc,x264enc"
-    else
-        # This is an invalid configuration that will get trapped in encoder selection below.
-        config[video_encoders]=""
-    fi
+	if ${enable[h265]} ; then
+		config[video_encoders]="imxvpuenc_h265,omxh265enc,x265enc"
+	elif ${enable[h264]} ; then
+		config[video_encoders]="imxvpuenc_h264,omxh264enc,x264enc"
+	else
+		# This is an invalid configuration that will get trapped in encoder selection below.
+		config[video_encoders]=""
+	fi
 fi
 if [ -z "${config[audio_encoders]}" ] ; then
 	#config[audio_encoders]="avenc_aac,voaacenc"
@@ -217,15 +217,15 @@ function timequeue {
 }
 
 if ${enable[debug]} ; then
-    for k in ${!config[@]} ; do
-        >&2 echo "config[$k]=${config[$k]}"
-    done
-    for k in ${!enable[@]} ; do
-        >&2 echo "enable[$k]=${enable[$k]}"
-    done
-    for k in ${!udp[@]} ; do
-        >&2 echo "udp[$k]=${udp[$k]}"
-    done
+	for k in ${!config[@]} ; do
+		>&2 echo "config[$k]=${config[$k]}"
+	done
+	for k in ${!enable[@]} ; do
+		>&2 echo "enable[$k]=${enable[$k]}"
+	done
+	for k in ${!udp[@]} ; do
+		>&2 echo "udp[$k]=${udp[$k]}"
+	done
 	dlog=/tmp/debug.$$ ; echo "$(date --iso-8601='seconds')" > $dlog
 	>&2 echo "Diagnostic on $dlog"
 else
@@ -252,7 +252,7 @@ fi
 
 # Common parts for gst spells
 function flvmux {
-    # BEWARE: flvmux is reported to not support h.265
+	# BEWARE: flvmux is reported to not support h.265
 	local result="$(timequeue $qmst leaky=upstream) ! mux.video flvmux streamable=true name=mux"
 	if [ "${PLATFORM}" == "RPIX" ] ; then result="$result latency=$(($qmst * ${config[flvmux_ratio]} * 1000000))" ; fi
 	echo $result
@@ -364,49 +364,50 @@ fi
 LOG SCAN
 # Determine which video encoder we will use
 for e in $(IFS=',';echo ${config[video_encoders]}) ; do
-    LOG TRY $e
+	LOG TRY $e
 	if gst-inspect-1.0 $e >> $log ; then
-        LOG SELECT $e
-        gst[encoder]=${encoder[$e]}
-        gst[encoder_formats]=${encoder_formats[$e]}
-        break
-    fi
+		LOG SELECT $e
+		gst[encoder]=${encoder[$e]}
+		gst[encoder_formats]=${encoder_formats[$e]}
+		break
+	fi
 done
 if [ -z "${gst[encoder]}" ] || [ -z "${gst[encoder_formats]}" ] ; then
-    if ${enable[debug]} ; then
-        for k in ${!encoder[@]} ; do
-            >&2 echo "encoder[$k]=${encoder[$k]}"
-        done
-        for k in ${!gst[@]} ; do
-            >&2 echo "gst[$k]=${gst[$k]}"
-        done
-    fi
-    if ${enable[mjpg]} || ${enable[xraw]} ; then
-        # camera is jpeg or raw
-        if ! ${enable[h264]} || ! ${enable[h265]} ; then
-            LOG {h264,h265} not in FLAGS - pipeline cannot be constructed
-            exit 1
-        fi
-    elif ! ${enable[encd]} ; then
-        LOG Invalid FLAGS - pipeline cannot be constructed
-        exit 1
-    fi
+	if ${enable[debug]} ; then
+		for k in ${!encoder[@]} ; do
+			>&2 echo "encoder[$k]=${encoder[$k]}"
+		done
+		for k in ${!gst[@]} ; do
+			>&2 echo "gst[$k]=${gst[$k]}"
+		done
+	fi
+	LOG No video encoder found/selected
+	if ${enable[mjpg]} || ${enable[xraw]} ; then
+		# camera is jpeg or raw
+		if ! ${enable[h264]} || ! ${enable[h265]} ; then
+			LOG {h264,h265} not in FLAGS - pipeline cannot be constructed
+			exit 1
+		fi
+	elif ! ${enable[encd]} ; then
+		LOG {h264/h265} source not found and 'encd' not in FLAGS - pipeline cannot be constructed
+		exit 1
+	fi
 fi
 
 # Determine which video scaler we will use
 if ${enable[scale]} ; then
-    for e in $(IFS=',';echo ${config[video_scalers]}) ; do
-        LOG TRY $e
+	for e in $(IFS=',';echo ${config[video_scalers]}) ; do
+		LOG TRY $e
 		if [ ! -z "${scaler[$e]}" ] && gst-inspect-1.0 $e >> $log ; then
-            LOG SELECT $e
+			LOG SELECT $e
 			gst[videoscale]="${scaler[$e]}"
 			gst[videoscale_formats]="${scaler_formats[$e]}"
-            break
-        fi
-    done
-    if [ "${gst[videoscale]}" == "videoscale" ] ; then
-        LOG HW video scalers not available - using videoscale
-    fi
+			break
+		fi
+	done
+	if [ "${gst[videoscale]}" == "videoscale" ] ; then
+		LOG HW video scalers not available - using videoscale
+	fi
 fi
 
 # video devices
