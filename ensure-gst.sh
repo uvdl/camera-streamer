@@ -29,6 +29,7 @@ elif [ "${PLATFORM}" == "NVID" ] ; then
 	true
 else
 	pkgdeps[gstreamer1.0-libav]=true
+	pkgdeps[h264enc]=true
 fi
 
 # gstreamer pipeline segments
@@ -80,3 +81,30 @@ if [ "$1" == "--dry-run" ] ; then
 	exit ${#todo[@]}
 fi
 $SUDO apt-get install -y ${!pkgdeps[@]}
+
+# Ensure video encoding capability
+declare -A encoder
+if [ "${PLATFORM}" == "IMX6" ] ; then
+	encoder[imxvpuenc_h264]=false
+elif [ "${PLATFORM}" == "RPIX" ] ; then
+	encoder[avenc_h264_omx]=false
+	encoder[v4l2h264enc]=false
+elif [ "${PLATFORM}" == "NVID" ] ; then
+	encoder[omxh264enc]=false
+	encoder[omxh265enc]=false
+else
+	encoder[x264enc]=false
+	encoder[x265enc]=false
+fi
+any=false
+for m in ${!encoder[@]} ; do
+	if gst-inspect-1.0 $m > /tmp/$$.info ; then
+		encoder[$m]=true
+		any=true
+	fi
+	echo "encoder[$m]=${encoder[$m]}"
+done
+if ! $any ; then
+	echo "No encoders detected - gst not installed correctly"
+	exit 1
+fi
