@@ -11,7 +11,7 @@
 declare -A config
 config[video_port]="$1" ; if [ -z "${config[video_port]}" ] ; then config[video_port]=5600 ; fi
 config[audio_port]="$2" ; if [ -z "${config[audio_port]}" ] ; then config[audio_port]=0 ; fi
-config[udp_ip]="$3"
+config[udp_ip]="$3" ; if [ -z "${config[udp_ip]}" ] ; then config[udp_ip]="224.0.0.1" ; fi
 config[video_encd]="$4" ; if [ -z "${config[video_encd]}" ] ; then config[video_encd]=H264 ; fi
 config[mcast_if]="$5" ; if [ -z "${config[mcast_if]}" ] ; then config[mcast_if]=eth0 ; fi
 config[audio_caps]="application/x-rtp"
@@ -22,6 +22,22 @@ if [ "${config[video_encd]}" == "H265" ] ; then
 	config[video_depay]="rtph265depay ! h265parse ! queue"
 else
 	config[video_depay]="rtph264depay ! h264parse ! queue"
+fi
+
+# Emit usage if no command line args were set
+if ! (($#)) ; then
+	cat <<-EOF
+Usage:
+  $(basename $0) video_port [audio_port [udp_ip [video_encd [mcast_if]]]]
+
+EOF
+	for k in ${!config[@]} ; do
+		>&2 echo "  default[$k]=${config[$k]}"
+	done
+	echo ""
+	echo "  Available interfaces (for mcast_if):"
+	echo "$(ip addr | grep ^[1-9]:)"
+	exit 1
 fi
 
 declare -A gst
