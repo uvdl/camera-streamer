@@ -580,6 +580,7 @@ if ${enable[audio]} ; then
 		gst-launch-1.0 -v alsasrc device="hw:${c},${d}" num-buffers=0 ! fakesink 2>&1 | sed -une '/src: caps/ s/[:;] /\n/gp' > /tmp/audio.$$
 		if grep S16LE /tmp/audio.$$ > /dev/null && ${enable[audio]} ; then
 			echo "hw:${c},${d}" > ${LOGDIR}/gst.audio.dev.$$
+			break
 		fi
 	done
 	if x=$(cat ${LOGDIR}/gst.audio.dev.$$) ; then
