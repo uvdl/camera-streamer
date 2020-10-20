@@ -25,9 +25,9 @@ for d in ${config[devs]} ; do
 done
 echo "*** ALSASRC ***"
 # https://stackoverflow.com/a/1521470
-if aplay -l > ${config[path]}/audio.txt ; then
+if arecord -l > ${config[path]}/audio.txt ; then
 	echo "**** Capabilities ****" >> ${config[path]}/audio.txt
-	aplay -l | grep 'card.*device' | while read p || [[ -n $p ]] ; do
+	arecord -l | grep 'card.*device' | while read p || [[ -n $p ]] ; do
 		c=$(echo $p | cut -f1 -d, | cut -f1 -d: | cut -f2 -d' ')
 		d=$(echo $p | cut -f2 -d, | cut -f1 -d: | cut -f3 -d' ')
 		echo -n "*** hw:$c,$d "
