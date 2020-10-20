@@ -81,7 +81,7 @@ $(SYSCFG): serial_number.py
 			URL="rtmp://$${SERVER}:$${SERVER_PORT}/$${SERVER_GROUP}" ; \
 		fi ; \
 		if [ "$$URL" == "udp" ] ; then \
-			FLAGS="audio,h264,mjpg,udp,xraw"
+			FLAGS="audio,h264,mjpg,udp,xraw" \
 			UDP_IFACE=$(shell $(SUDO) grep UDP_IFACE $(SYSCFG) | cut -f2 -d=) && \
 			UDP_HOST=$(shell $(SUDO) grep UDP_HOST $(SYSCFG) | cut -f2 -d=) && \
 			UDP_PORT=$(shell $(SUDO) grep UDP_PORT $(SYSCFG) | cut -f2 -d=) && \
