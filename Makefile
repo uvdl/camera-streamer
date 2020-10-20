@@ -140,8 +140,8 @@ install: git-cache
 
 provision:
 	$(MAKE) --no-print-directory FLAGS=$(FLAGS) -B $(SYSCFG)
-	$(MAKE) --no-print-directory -B /etc/hosts
-	@(	UDP_IFACE=$(shell $(SUDO) grep UDP_IFACE $(SYSCFG) | cut -f2 -d=) && \
+	#$(MAKE) --no-print-directory -B /etc/hosts
+	#@(	UDP_IFACE=$(shell $(SUDO) grep UDP_IFACE $(SYSCFG) | cut -f2 -d=) && \
 		UDP_IFACE=$$UDP_IFACE $(MAKE) --no-print-directory -B /etc/network/interfaces )
 
 /etc/hosts: Makefile
