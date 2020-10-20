@@ -98,6 +98,7 @@ $(SYSCFG): serial_number.py
 		echo "URL=$${URL}" >> /tmp/$$.env && \
 		echo "SKEY=$${SKEY}" >> /tmp/$$.env && \
 		echo "FLAGS=$(FLAGS)" >> /tmp/$$.env && \
+		arecord -l && \
 		read -p "Audio Device? ($${AUDIO}) " ADEV && \
 		if [ ! -z "$${ADEV}" ] ; then AUDIO="$${ADEV}" ; fi ; \
 		echo "AUDIO=$${AUDIO}" >> /tmp/$$.env && \
@@ -140,9 +141,9 @@ install: git-cache
 
 provision:
 	$(MAKE) --no-print-directory FLAGS=$(FLAGS) -B $(SYSCFG)
-	#$(MAKE) --no-print-directory -B /etc/hosts
-	#@(	UDP_IFACE=$(shell $(SUDO) grep UDP_IFACE $(SYSCFG) | cut -f2 -d=) && \
-		UDP_IFACE=$$UDP_IFACE $(MAKE) --no-print-directory -B /etc/network/interfaces )
+#	$(MAKE) --no-print-directory -B /etc/hosts
+#	@(	UDP_IFACE=$(shell $(SUDO) grep UDP_IFACE $(SYSCFG) | cut -f2 -d=) && \
+#		UDP_IFACE=$$UDP_IFACE $(MAKE) --no-print-directory -B /etc/network/interfaces )
 
 /etc/hosts: Makefile
 	@(	URL=$(shell $(SUDO) grep URL $(SYSCFG) | cut -f2 -d=) && \
