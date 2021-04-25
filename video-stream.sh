@@ -383,7 +383,7 @@ if [ -z "${gst[encoder]}" ] || [ -z "${gst[encoder_formats]}" ] ; then
     fi
     if ${enable[mjpg]} || ${enable[xraw]} ; then
         # camera is jpeg or raw
-        if ! ${enable[h264]} || ! ${enable[h265]} ; then
+        if ! ${enable[h264]} && ! ${enable[h265]} ; then
             LOG {h264,h265} not in FLAGS - pipeline cannot be constructed
             exit 1
         fi
