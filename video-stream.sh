@@ -380,6 +380,7 @@ if [ -z "${gst[encoder]}" ] || [ -z "${gst[encoder_formats]}" ] ; then
         for k in ${!gst[@]} ; do
             >&2 echo "gst[$k]=${gst[$k]}"
         done
+        gst[encoder]="no-suitable-encoder"
     fi
     if ${enable[mjpg]} || ${enable[xraw]} ; then
         # camera is jpeg or raw
@@ -644,7 +645,11 @@ if [ ! -z "${dev[h264]}" ] ; then
 	sourceinfo="H.264 ${dev[h264]} ${config[width]} ${config[height]} ${config[fps]}"
 	gst[sourcepipeline]="$(videosource h264 ${dev[h264]})"
 	# TODO: if enable[h265], it means we need to transcode h264->h265, which is silly, but if thats what is wanted...
-	gst[encoder]=""
+	if ${enable[h265]} ; then
+		gst[encoder]="need-to-transcode-h264-to-h265"   # NB: will surely fail to produce a valid pipeline...
+	elif ${enable[h264]} ; then
+		gst[encoder]="progressreport name=h264"
+	fi
 elif [ ! -z "${dev[mjpg]}" ] ; then
 	sourceinfo="MJPG ${dev[mjpg]} ${config[width]} ${config[height]} ${config[fps]}"
 	gst[sourcepipeline]="$(videosource mjpg ${dev[mjpg]}) ! $(mjpgargs ${config[width]} ${config[height]} ${config[fps]}) ! jpegdec ! $(xrawargs ${config[width]} ${config[height]} ${config[fps]} I420)"
